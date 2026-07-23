@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { installProxyDispatcher } from "./lib/proxy.ts";
+import { getCommandTimeoutMs, startCommandWatchdog } from "./lib/command-watchdog.ts";
 import { getPackageVersion } from "./lib/version.ts";
 import { createCliContext } from "./cli/context.ts";
 import { registerAuthCommand } from "./cli/auth-command.ts";
@@ -18,19 +19,6 @@ import { backgroundUpdateCheck } from "./lib/update.ts";
 installProxyDispatcher();
 
 const program = new Command();
-const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
-
-function getCommandTimeoutMs(): number {
-  const raw = process.env.AGENT_SLACK_COMMAND_TIMEOUT_MS?.trim();
-  if (!raw) {
-    return DEFAULT_COMMAND_TIMEOUT_MS;
-  }
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_COMMAND_TIMEOUT_MS;
-  }
-  return Math.floor(parsed);
-}
 
 function shouldStartCommandWatchdog(args: string[]): boolean {
   const [command, subcommand] = args;
@@ -43,18 +31,11 @@ function shouldStartCommandWatchdog(args: string[]): boolean {
   return true;
 }
 
-function startCommandWatchdog(args: string[]): void {
+function maybeStartCommandWatchdog(args: string[]): void {
   if (!shouldStartCommandWatchdog(args)) {
     return;
   }
-  const timeoutMs = getCommandTimeoutMs();
-  const timer = setTimeout(() => {
-    console.error(
-      `agent-slack command timed out after ${timeoutMs}ms. Set AGENT_SLACK_COMMAND_TIMEOUT_MS to adjust.`,
-    );
-    process.exit(124);
-  }, timeoutMs);
-  (timer as { unref?: () => void }).unref?.();
+  startCommandWatchdog(getCommandTimeoutMs());
 }
 
 program
@@ -66,7 +47,7 @@ program
     'Human-in-the-loop enforcement: redirect "message send" to the draft editor and block "message edit"/"message delete" (also: AGENT_SLACK_SAFE_MODE=1)',
   );
 
-startCommandWatchdog(process.argv.slice(2));
+maybeStartCommandWatchdog(process.argv.slice(2));
 
 const ctx = createCliContext();
 

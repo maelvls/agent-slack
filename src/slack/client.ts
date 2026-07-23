@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { extendCommandWatchdog } from "../lib/command-watchdog.ts";
 import { getKeychainTlsOption } from "../lib/keychain-ca.ts";
 import { getSlackProxyAgent } from "../lib/proxy.ts";
 import { getUserAgent } from "../lib/version.ts";
@@ -8,7 +9,9 @@ export type SlackAuth =
   | { auth_type: "browser"; xoxc_token: string; xoxd_cookie: string };
 
 const DEFAULT_SLACK_API_TIMEOUT_MS = 20_000;
-const DEFAULT_SLACK_RATE_LIMIT_MAX_WAIT_MS = 0;
+// Slack's "default" rate-limit tier typically asks for waits in the 1-60s range;
+// auto-wait up to a minute per retry so callers don't have to opt in for the common case.
+const DEFAULT_SLACK_RATE_LIMIT_MAX_WAIT_MS = 60_000;
 
 function getSlackApiTimeoutMs(): number {
   const raw =
@@ -48,6 +51,23 @@ function slackRateLimitError(input: {
 }): Error {
   return new Error(
     `Slack API call ${input.method} was rate limited; retry-after ${input.retryAfterSec}s exceeds AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS=${input.maxWaitMs}.`,
+  );
+}
+
+function pluralSeconds(n: number): string {
+  return n === 1 ? "second" : "seconds";
+}
+
+function logRateLimitRetry(input: {
+  method: string;
+  retryAfterSec: number;
+  delayMs: number;
+}): void {
+  const waitSec = Math.round(input.delayMs / 1000);
+  console.error(
+    `Slack API call ${input.method} was rate limited, and the API is telling us to retry in ` +
+      `${input.retryAfterSec} ${pluralSeconds(input.retryAfterSec)}. ` +
+      `Waiting ${waitSec} ${pluralSeconds(waitSec)} before retrying...`,
   );
 }
 
@@ -154,11 +174,16 @@ export class SlackApiClient {
 
     if (response.status === 429 && attempt < 3) {
       const retryAfter = Number(response.headers.get("Retry-After") ?? "5");
-      const delayMs = Math.min(Math.max(retryAfter, 1) * 1000, 30000);
+      const requestedWaitMs = Math.max(retryAfter, 1) * 1000;
       const maxWaitMs = getSlackRateLimitMaxWaitMs();
-      if (delayMs > maxWaitMs) {
+      if (requestedWaitMs > maxWaitMs) {
         throw slackRateLimitError({ method: input.method, retryAfterSec: retryAfter, maxWaitMs });
       }
+      const delayMs = Math.min(requestedWaitMs, 30000);
+      logRateLimitRetry({ method: input.method, retryAfterSec: retryAfter, delayMs });
+      // The command watchdog doesn't know this wait is intentional; push its deadline
+      // out so it doesn't kill the process mid-retry.
+      extendCommandWatchdog(delayMs + timeoutMs + 5000);
       await new Promise((r) => setTimeout(r, delayMs));
       return this.browserApiMultipart({
         ...input,
@@ -245,11 +270,16 @@ export class SlackApiClient {
 
     if (response.status === 429 && attempt < 3) {
       const retryAfter = Number(response.headers.get("Retry-After") ?? "5");
-      const delayMs = Math.min(Math.max(retryAfter, 1) * 1000, 30000);
+      const requestedWaitMs = Math.max(retryAfter, 1) * 1000;
       const maxWaitMs = getSlackRateLimitMaxWaitMs();
-      if (delayMs > maxWaitMs) {
+      if (requestedWaitMs > maxWaitMs) {
         throw slackRateLimitError({ method: input.method, retryAfterSec: retryAfter, maxWaitMs });
       }
+      const delayMs = Math.min(requestedWaitMs, 30000);
+      logRateLimitRetry({ method: input.method, retryAfterSec: retryAfter, delayMs });
+      // The command watchdog doesn't know this wait is intentional; push its deadline
+      // out so it doesn't kill the process mid-retry.
+      extendCommandWatchdog(delayMs + timeoutMs + 5000);
       await new Promise((r) => setTimeout(r, delayMs));
       return this.browserApi({
         ...input,

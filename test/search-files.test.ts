@@ -155,11 +155,39 @@ describe("SlackApiClient browser API guards", () => {
     );
   }
 
-  test("fails fast on rate-limit retry windows by default", async () => {
-    globalThis.fetch = (async () =>
+  test("auto-waits and retries rate limits within the default window", async () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const responses = [
       new Response(JSON.stringify({ ok: false, error: "ratelimited" }), {
         status: 429,
         headers: { "Retry-After": "5" },
+      }),
+      new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ];
+    globalThis.fetch = (async () => responses.shift()!) as unknown as typeof fetch;
+    const delays: number[] = [];
+    globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+      delays.push(delay ?? 0);
+      callback();
+      return 0;
+    }) as unknown as typeof setTimeout;
+
+    try {
+      await expect(browserClient().api("auth.test")).resolves.toEqual({ ok: true });
+      expect(delays).toEqual([5000]);
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+    }
+  });
+
+  test("fails fast once the rate-limit retry window exceeds the default", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ ok: false, error: "ratelimited" }), {
+        status: 429,
+        headers: { "Retry-After": "120" },
       })) as unknown as typeof fetch;
 
     await expect(browserClient().api("auth.test")).rejects.toThrow(
