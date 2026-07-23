@@ -1,4 +1,5 @@
 import { WebClient } from "@slack/web-api";
+import { getKeychainTlsOption } from "../lib/keychain-ca.ts";
 import { getSlackProxyAgent } from "../lib/proxy.ts";
 import { getUserAgent } from "../lib/version.ts";
 
@@ -84,6 +85,7 @@ export class SlackApiClient {
         retryConfig: { retries: 0 },
         rejectRateLimitedCalls: true,
         agent: getSlackProxyAgent(),
+        ...getKeychainTlsOption(),
       });
     }
   }
@@ -141,6 +143,7 @@ export class SlackApiClient {
         },
         body: fd,
         signal: timeoutSignal(timeoutMs),
+        ...getKeychainTlsOption(),
       });
     } catch (error) {
       if (isAbortOrTimeoutError(error)) {
@@ -231,6 +234,7 @@ export class SlackApiClient {
         },
         body: formBody,
         signal: timeoutSignal(timeoutMs),
+        ...getKeychainTlsOption(),
       });
     } catch (error) {
       if (isAbortOrTimeoutError(error)) {

@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import type { SlackAuth } from "./client.ts";
 import { existsSync } from "node:fs";
+import { getKeychainTlsOption } from "../lib/keychain-ca.ts";
 import { getUserAgent } from "../lib/version.ts";
 
 export class SlackDownloadError extends Error {
@@ -47,7 +48,7 @@ export async function downloadSlackFile(input: {
 
   let resp: Response;
   try {
-    resp = await fetch(url, { headers });
+    resp = await fetch(url, { headers, ...getKeychainTlsOption() });
   } catch (err) {
     throw new SlackDownloadError(
       `Network error: ${err instanceof Error ? err.message : String(err)}`,

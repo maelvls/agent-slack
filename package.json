@@ -63,6 +63,6 @@
     "pre-commit": "bun run lintf && bun run format && git add -A"
   },
   "engines": {
-    "node": ">=22.5"
+    "node": ">=22.9"
   }
 }

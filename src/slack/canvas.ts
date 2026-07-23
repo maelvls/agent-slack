@@ -4,6 +4,7 @@ import { htmlToMarkdown } from "./html-to-md.ts";
 import { ensureDownloadsDir } from "../lib/tmp-paths.ts";
 import { getString, isRecord } from "../lib/object-type-guards.ts";
 import { readFile } from "node:fs/promises";
+import { getKeychainTlsOption } from "../lib/keychain-ca.ts";
 import { getUserAgent } from "../lib/version.ts";
 
 export type SlackCanvasRef = {
@@ -274,7 +275,7 @@ export async function fetchCanvasMarkdown(
       headers.Referer = "https://app.slack.com/";
       headers["User-Agent"] = getUserAgent();
     }
-    const resp = await fetch(downloadUrl, { headers });
+    const resp = await fetch(downloadUrl, { headers, ...getKeychainTlsOption() });
     if (!resp.ok) {
       throw new Error(`Failed to download canvas HTML (${resp.status})`);
     }

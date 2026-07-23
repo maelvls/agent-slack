@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { getAppDir } from "./app-dir.ts";
 import { readJsonFile, writeJsonFile } from "./fs.ts";
+import { getKeychainTlsOption } from "./keychain-ca.ts";
 import { getPackageVersion } from "./version.ts";
 
 const REPO = "stablyai/agent-slack";
@@ -49,6 +50,7 @@ export async function fetchLatestVersion(): Promise<string | null> {
     const resp = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
       headers: { Accept: "application/vnd.github+json", "User-Agent": "agent-slack-updater" },
       signal: AbortSignal.timeout(5000),
+      ...getKeychainTlsOption(),
     });
     if (!resp.ok) {
       return null;
@@ -200,8 +202,14 @@ export async function performUpdate(
   try {
     // Download binary + checksums in parallel
     const [binResp, sumsResp] = await Promise.all([
-      fetch(`${baseUrl}/${asset}`, { signal: AbortSignal.timeout(120_000) }),
-      fetch(`${baseUrl}/checksums-sha256.txt`, { signal: AbortSignal.timeout(30_000) }),
+      fetch(`${baseUrl}/${asset}`, {
+        signal: AbortSignal.timeout(120_000),
+        ...getKeychainTlsOption(),
+      }),
+      fetch(`${baseUrl}/checksums-sha256.txt`, {
+        signal: AbortSignal.timeout(30_000),
+        ...getKeychainTlsOption(),
+      }),
     ]);
 
     if (!binResp.ok) {

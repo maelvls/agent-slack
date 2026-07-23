@@ -1,6 +1,7 @@
 import { readFile, stat, realpath } from "node:fs/promises";
 import { basename } from "node:path";
 import type { SlackApiClient } from "./client.ts";
+import { getKeychainTlsOption } from "../lib/keychain-ca.ts";
 import { asArray, getString, isRecord } from "../lib/object-type-guards.ts";
 
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB — Slack's upload limit
@@ -53,6 +54,7 @@ async function stageFileUpload(input: {
       "Content-Length": String(bytes.length),
     },
     body: bytes,
+    ...getKeychainTlsOption(),
   });
   if (!uploadResp.ok) {
     const body = await uploadResp.text().catch(() => "");
