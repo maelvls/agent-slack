@@ -34,6 +34,22 @@ describe("parseInlineElements", () => {
     ]);
   });
 
+  test("[label](url) CommonMark links are parsed as link elements", () => {
+    expect(parseInlineElements("See [PR #42](https://example.com/pull/42) *now*")).toEqual([
+      { type: "text", text: "See " },
+      { type: "link", url: "https://example.com/pull/42", text: "PR #42" },
+      { type: "text", text: " " },
+      { type: "text", text: "now", style: { bold: true } },
+    ]);
+  });
+
+  test("[label](url) stays literal inside code and for non-http targets", () => {
+    expect(parseInlineElements("`[x](https://example.com)` and [notes](./notes.md)")).toEqual([
+      { type: "text", text: "[x](https://example.com)", style: { code: true } },
+      { type: "text", text: " and [notes](./notes.md)" },
+    ]);
+  });
+
   test(":emoji: shortcode is parsed as an emoji element", () => {
     expect(parseInlineElements("Launch :rocket: now")).toEqual([
       { type: "text", text: "Launch " },
@@ -269,7 +285,7 @@ describe("textToRichTextBlocks", () => {
     ]);
   });
 
-  test("Slack manual links and CommonMark links remain distinct in list items", () => {
+  test("Slack manual links and CommonMark links both become link elements in list items", () => {
     const result = textToRichTextBlocks(
       "- Review <https://example.com/pull/42|PR #42>\n- Review [PR #43](https://example.com/pull/43)",
     )!;
@@ -281,7 +297,8 @@ describe("textToRichTextBlocks", () => {
       { type: "link", url: "https://example.com/pull/42", text: "PR #42" },
     ]);
     expect(list.elements[1]!.elements).toEqual([
-      { type: "text", text: "Review [PR #43](https://example.com/pull/43)" },
+      { type: "text", text: "Review " },
+      { type: "link", url: "https://example.com/pull/43", text: "PR #43" },
     ]);
   });
 
