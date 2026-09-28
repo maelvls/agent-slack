@@ -43,6 +43,14 @@ describe("parseInlineElements", () => {
     ]);
   });
 
+  test("[label](url) with balanced parentheses in the URL keeps the full URL", () => {
+    expect(parseInlineElements("See [Foo](https://en.wikipedia.org/wiki/Foo_(bar)) now")).toEqual([
+      { type: "text", text: "See " },
+      { type: "link", url: "https://en.wikipedia.org/wiki/Foo_(bar)", text: "Foo" },
+      { type: "text", text: " now" },
+    ]);
+  });
+
   test("[label](url) stays literal inside code and for non-http targets", () => {
     expect(parseInlineElements("`[x](https://example.com)` and [notes](./notes.md)")).toEqual([
       { type: "text", text: "[x](https://example.com)", style: { code: true } },
