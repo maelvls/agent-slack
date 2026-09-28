@@ -19,7 +19,7 @@ export function formatOutboundSlackText(text: string): string {
 
   // Rewrite CommonMark links as Slack manual links, leaving code untouched.
   let out = text.replace(
-    /```[\s\S]*?```|`[^`\n]+`|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)[^)\s]+)\)/g,
+    /```[\s\S]*?```|`[^`\n]+`|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)(?:\([^\s()]*\)|[^\s()])*)\)/g,
     (m, label?: string, url?: string) =>
       label != null && url != null ? `<${url}|${escapeMrkdwn(label)}>` : m,
   );

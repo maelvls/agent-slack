@@ -40,6 +40,12 @@ describe("formatOutboundSlackText", () => {
     );
   });
 
+  test("preserves balanced parentheses inside a CommonMark link URL", () => {
+    expect(formatOutboundSlackText("See [Foo](https://en.wikipedia.org/wiki/Foo_(bar)) now")).toBe(
+      "See <https://en.wikipedia.org/wiki/Foo_(bar)|Foo> now",
+    );
+  });
+
   test("leaves CommonMark link syntax in code and non-http targets alone", () => {
     expect(formatOutboundSlackText("run `[x](https://example.com)`")).toBe(
       "run `[x](https://example.com)`",
