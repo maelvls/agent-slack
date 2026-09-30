@@ -1,7 +1,10 @@
 import type { Command } from "commander";
 import type { CliContext } from "./context.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
-import { getDmChannelForUsers, getUser, listUsers } from "../slack/users.ts";
+import { getString } from "../lib/object-type-guards.ts";
+import { getDmChannelForUsers, getUser, listUsers, resolveUserId } from "../slack/users.ts";
+import { collectOrgChartUserIds, fetchOrgChart } from "../slack/org-chart.ts";
+import { resolveUsersById, toReferencedUsers } from "../slack/user-cache.ts";
 
 export function registerUserCommand(input: { program: Command; ctx: CliContext }): void {
   const userCmd = input.program.command("user").description("Workspace user directory");
@@ -58,6 +61,60 @@ export function registerUserCommand(input: { program: Command; ctx: CliContext }
           work: async () => {
             const { client } = await input.ctx.getClientForWorkspace(workspaceUrl);
             return await getUser(client, user);
+          },
+        });
+        console.log(JSON.stringify(pruneEmpty(payload), null, 2));
+      } catch (err: unknown) {
+        console.error(input.ctx.errorMessage(err));
+        process.exitCode = 1;
+      }
+    });
+
+  userCmd
+    .command("org-chart")
+    .description(
+      "Show a user's manager chain (nearest first), peers, and direct reports (requires browser auth)",
+    )
+    .argument("[user]", "User ID (U.../W...), @handle/handle, or email (default: you)")
+    .option(
+      "--workspace <url>",
+      "Workspace selector (full URL or unique substring; required if you have multiple workspaces)",
+    )
+    .option("--all-peers", "Also list each manager's peers (the wider org at every level)")
+    .option("--resolve-users", "Resolve user IDs to user profiles")
+    .option(
+      "--refresh-users",
+      "Refresh user profile cache before resolving user IDs (implies --resolve-users)",
+    )
+    .action(async (...args) => {
+      const [user, options] = args as [
+        string | undefined,
+        { workspace?: string; allPeers?: boolean; resolveUsers?: boolean; refreshUsers?: boolean },
+      ];
+      try {
+        const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
+        const payload = await input.ctx.withAutoRefresh({
+          workspaceUrl,
+          work: async () => {
+            const { client, workspace_url } = await input.ctx.getClientForWorkspace(workspaceUrl);
+            const userId = user?.trim()
+              ? await resolveUserId(client, user)
+              : getString((await client.api("auth.test")).user_id);
+            if (!userId) {
+              throw new Error(`Could not resolve user: ${user ?? "(current user)"}`);
+            }
+            const chart = await fetchOrgChart(client, { userId, allPeers: options.allPeers });
+            if (!options.resolveUsers && !options.refreshUsers) {
+              return chart;
+            }
+            const userIds = collectOrgChartUserIds(chart);
+            const usersById = await resolveUsersById({
+              client,
+              workspaceUrl: workspace_url ?? workspaceUrl ?? "",
+              userIds,
+              forceRefresh: Boolean(options.refreshUsers),
+            });
+            return { ...chart, referenced_users: toReferencedUsers(userIds, usersById) };
           },
         });
         console.log(JSON.stringify(pruneEmpty(payload), null, 2));

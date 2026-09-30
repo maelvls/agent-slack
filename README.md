@@ -97,7 +97,8 @@ agent-slack
 │   └── invite                      # invite users to channel
 ├── user
 │   ├── list
-│   └── get <user>
+│   ├── get <user>
+│   └── org-chart [user]           # manager chain, peers, direct reports
 ├── search
 │   ├── all      <query>           # messages + files
 │   ├── messages <query>
@@ -484,7 +485,13 @@ agent-slack user get "@alice" --workspace "https://workspace.slack.com" | jq .
 
 # Open a DM or group DM with one to eight other users (the caller is implicit)
 agent-slack user dm-open "@alice" "@bob" --workspace "https://workspace.slack.com" | jq .
+
+# Org chart: manager chain (nearest first), peers, and direct reports (default: you)
+agent-slack user org-chart --resolve-users
+agent-slack user org-chart U12345678 --all-peers
 ```
+
+`user org-chart` uses Slack's undocumented `users.profile.relationships.getOrgChart` client endpoint (the org chart on a profile) and requires browser auth (xoxc/xoxd).
 
 ### Unreads (inbox view)
 
