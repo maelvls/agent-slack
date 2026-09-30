@@ -1,6 +1,6 @@
 ---
 name: agent-slack
-description: "Slack CLI for agents: read URLs/threads/history/unreads/later/canvases/workflows, create/edit canvases from Markdown, search messages/files, download attachments, lookup users, list/create/invite channels, open DMs, compose messages, manage Slack-native drafts, schedule sends, and explicit sends/edits/deletes/reactions/mark-read/uploads."
+description: "Slack CLI for agents: read URLs/threads/history/unreads/later/huddles/canvases/workflows, create/edit canvases from Markdown, search messages/files, download attachments, lookup users, list/create/invite channels, open DMs, compose messages, manage Slack-native drafts, schedule sends, and explicit sends/edits/deletes/reactions/mark-read/uploads."
 ---
 
 # agent-slack
@@ -40,6 +40,8 @@ Use `--no-unfurl` with `message send` or `message compose` when the user wants S
 Ordinary `message send` and `message edit` calls auto-convert lists. `message send --blocks` and `message edit --blocks` use supplied Block Kit blocks, while `message send --attach` sends its initial comment without automatic list conversion. Inside auto-converted lists, use Slack's `<URL|label>` syntax because CommonMark `[label](URL)` links are not converted into labeled link elements.
 
 Slack-native drafts (`message draft list|create|update|delete`) manage drafts that appear in the user's Slack client; `create` posts nothing. `create` and `update` accept repeatable `--attach <path>`; on `update` the files are added to the draft's existing attachments rather than replacing them. They use undocumented session endpoints and require browser-style auth (xoxc/xoxd).
+
+`huddle list` reads huddle history (who, when, how long) newest-ended first; `--after`/`--before` take local `YYYY-MM-DD`. Huddle chat and notes live in the thread: `message list <channel_id> --thread-ts <thread_ts>`. It uses an undocumented endpoint and requires browser-style auth.
 
 `canvas edit` uses Slack's public `canvases.edit` API and applies exactly one operation per call. The
 default `replace` operation replaces the whole canvas; section-targeted inserts/replacements and

@@ -11,6 +11,7 @@
 ## Key Features
 
 - Read Slack messages, threads, and channel history from any URL or channel name
+- List Slack huddle history (participants, start/end, duration) with date filters and missed-huddle view
 - Search Slack messages and files with filters for channel, user, date, and content type
 - Send, schedule, edit, delete Slack messages, upload local files with `message send --attach` (also on `message draft create/update`), and add/remove emoji reactions programmatically
 - Auto-download Slack file attachments (snippets, images, files) to local paths for AI agent consumption
