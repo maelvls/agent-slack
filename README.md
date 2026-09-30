@@ -99,6 +99,8 @@ agent-slack
 │   ├── list
 │   ├── get <user>
 │   └── org-chart [user]           # manager chain, peers, direct reports
+├── huddle
+│   └── list                       # huddle history (who, when, how long)
 ├── search
 │   ├── all      <query>           # messages + files
 │   ├── messages <query>
@@ -533,6 +535,28 @@ Output includes channels sorted by mention count, then unread count:
 ```
 
 Note: This feature uses the `client.counts` API which may be restricted in some Enterprise Grid workspaces (`team_is_restricted` error).
+
+### Huddles
+
+List huddles you were in or invited to (the Huddles tab), most recently ended first:
+
+```bash
+# Latest 20 huddles
+agent-slack huddle list
+
+# Huddles that started in a date range (local time), with participant names
+agent-slack huddle list --after 2026-09-14 --before 2026-09-17 --resolve-users
+
+# Huddles you were invited to but did not join
+agent-slack huddle list --missed-only
+
+# Next page
+agent-slack huddle list --cursor "<next_cursor>"
+```
+
+Each huddle includes `channel_id`, `participants`, `date_start`/`date_end` (Unix seconds), `duration_seconds`, and `thread_ts`. Read the huddle thread (notes, chat) with `agent-slack message list <channel_id> --thread-ts <thread_ts>`.
+
+Note: this uses Slack's undocumented `huddles.history` client endpoint and requires browser auth (xoxc/xoxd).
 
 ### Later (saved messages)
 
