@@ -36,6 +36,10 @@ function shouldStartCommandWatchdog(args: string[]): boolean {
   if (command === "message" && subcommand === "draft") {
     return false;
   }
+  // These may wait on a macOS keychain prompt that the user has to answer.
+  if (command === "auth" && (subcommand === "import-desktop" || subcommand === "import-brave")) {
+    return false;
+  }
   return true;
 }
 
