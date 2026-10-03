@@ -10,7 +10,7 @@ import { isRecord } from "../lib/object-type-guards.ts";
 import { queryReadonlySqlite } from "./firefox-profile.ts";
 import { decryptChromiumCookieValue } from "./chromium-cookie.ts";
 import { getSafeStoragePasswords, decryptCookieWindows } from "./desktop-crypto.ts";
-import type { KeychainOptions } from "./keychain.ts";
+import { KeychainAccessError, type KeychainOptions } from "./keychain.ts";
 
 type DesktopTeam = { url: string; name?: string; token: string };
 
@@ -353,6 +353,10 @@ async function extractCookieDFromSlackCookiesDb(
   throw new Error("Could not locate xoxd-* in decrypted Slack cookie");
 }
 
+function formatDesktopExtractionErrors(errors: string[]): string {
+  return `Could not extract Slack Desktop credentials from any location:\n  - ${errors.join("\n  - ")}`;
+}
+
 export async function extractFromSlackDesktop(
   options: KeychainOptions = {},
 ): Promise<DesktopExtracted> {
@@ -374,10 +378,13 @@ export async function extractFromSlackDesktop(
       };
     } catch (err: unknown) {
       errors.push(`${baseDir}: ${err instanceof Error ? err.message : String(err)}`);
+      // Every profile reads the same keychain items: after a timeout or
+      // denial, trying the next one would only prompt (and wait) again.
+      if (err instanceof KeychainAccessError) {
+        throw new KeychainAccessError(formatDesktopExtractionErrors(errors));
+      }
     }
   }
 
-  throw new Error(
-    `Could not extract Slack Desktop credentials from any location:\n  - ${errors.join("\n  - ")}`,
-  );
+  throw new Error(formatDesktopExtractionErrors(errors));
 }
