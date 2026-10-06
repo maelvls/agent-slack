@@ -115,11 +115,15 @@ export function registerMessageCommand(input: { program: Command; ctx: CliContex
     )
     .option("--ts <ts>", "Message ts (required when using #channel/channel id)")
     .option("--blocks <path>", "Read Block Kit blocks JSON from file or '-'")
+    .option(
+      "--no-unfurl",
+      "Suppress link and media previews, removing any already on the message (also drops other attachments)",
+    )
     .action(async (...args) => {
       const [targetInput, text, options] = args as [
         string,
         string,
-        { workspace?: string; ts?: string; blocks?: string },
+        { workspace?: string; ts?: string; blocks?: string; unfurl?: boolean },
       ];
       try {
         if (safeModeActive()) {

@@ -323,7 +323,7 @@ export async function editMessage(input: {
   ctx: CliContext;
   targetInput: string;
   text: string;
-  options: { workspace?: string; ts?: string; blocks?: string };
+  options: { workspace?: string; ts?: string; blocks?: string; unfurl?: boolean };
 }): Promise<Record<string, unknown>> {
   const target = parseMsgTarget(String(input.targetInput));
   if (target.kind === "user") {
@@ -338,6 +338,10 @@ export async function editMessage(input: {
     : input.text
       ? textToRichTextBlocks(input.text)
       : null;
+  // unfurl_links=false alone only stops new previews; previews already on the
+  // message are attachments and stay until the update replaces them.
+  const unfurlParams =
+    input.options.unfurl === false ? { ...buildUnfurlApiParams(false), attachments: [] } : {};
 
   await input.ctx.withAutoRefresh({
     workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
@@ -351,6 +355,7 @@ export async function editMessage(input: {
           ts: ref.message_ts,
           text: formattedText,
           ...(blocks ? { blocks } : {}),
+          ...unfurlParams,
         });
         return;
       }
@@ -367,6 +372,7 @@ export async function editMessage(input: {
         ts,
         text: formattedText,
         ...(blocks ? { blocks } : {}),
+        ...unfurlParams,
       });
     },
   });

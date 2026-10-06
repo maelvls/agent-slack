@@ -1149,4 +1149,23 @@ describe("editMessage", () => {
     expect(calls[0]?.method).toBe("chat.update");
     expect(calls[0]?.params.blocks).toEqual(blocks);
   });
+
+  test("--no-unfurl suppresses new previews and clears existing ones", async () => {
+    const calls: { method: string; params: Record<string, unknown> }[] = [];
+    const ctx = createContext(calls);
+
+    await editMessage({
+      ctx,
+      targetInput: "https://workspace.slack.com/archives/C12345678/p1770165109628379",
+      text: "https://example.com",
+      options: { unfurl: false },
+    });
+
+    expect(calls[0]?.method).toBe("chat.update");
+    expect(calls[0]?.params).toMatchObject({
+      unfurl_links: false,
+      unfurl_media: false,
+      attachments: [],
+    });
+  });
 });

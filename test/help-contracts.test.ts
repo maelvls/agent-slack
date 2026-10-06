@@ -59,6 +59,11 @@ describe("agent-facing help contracts", () => {
     expect(optionDescription(compose, "--no-unfurl")).toContain("link and media previews");
   });
 
+  test("message edit can remove link previews", () => {
+    const edit = findCommand(buildProgram(), "message", "edit");
+    expect(optionDescription(edit, "--no-unfurl")).toContain("link and media previews");
+  });
+
   test("Slack-native drafts document DM targeting and inherited-broadcast controls", () => {
     const create = findCommand(buildProgram(), "message", "draft", "create");
     expect(create.registeredArguments[0]?.description).toContain("user id");
