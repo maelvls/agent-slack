@@ -139,6 +139,7 @@ export class SlackApiClient {
         },
         body: JSON.stringify({ token: auth.xoxc_token, ...body }),
         signal: timeoutSignal(timeoutMs),
+        ...getKeychainTlsOption(),
       });
     } catch (error) {
       if (isAbortOrTimeoutError(error)) {
