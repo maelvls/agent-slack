@@ -9,7 +9,7 @@ import { pruneEmpty } from "../lib/compact-json.ts";
 import { parseMsgTarget } from "./targets.ts";
 import { resolveChannelId } from "../slack/channels.ts";
 import { downloadMessageFiles } from "./message-file-downloads.ts";
-import { warnOnTruncatedSlackUrl } from "./message-url-warning.ts";
+import { truncatedSlackUrlWarning } from "./message-url-warning.ts";
 import { getThreadSummary, toThreadListMessage } from "./message-thread-info.ts";
 import type { MessageCommandOptions } from "./message-actions.ts";
 import {
@@ -41,7 +41,6 @@ export async function handleMessageGet(input: {
     work: async () => {
       if (target.kind === "url") {
         const { ref } = target;
-        warnOnTruncatedSlackUrl(ref);
         const { client, auth } = await input.ctx.getClientForWorkspace(ref.workspace_url);
         const includeReactions = Boolean(input.options.includeReactions);
         const msg = await fetchMessage(client, { ref, includeReactions });
@@ -69,6 +68,7 @@ export async function handleMessageGet(input: {
           message,
           thread,
           referenced_users: toReferencedUsers(referencedUserIds, usersById),
+          warning: truncatedSlackUrlWarning(ref),
         }) as Record<string, unknown>;
       }
 
@@ -150,7 +150,6 @@ export async function handleMessageList(input: {
           );
         }
         const { ref } = target;
-        warnOnTruncatedSlackUrl(ref);
         const { client, auth } = await input.ctx.getClientForWorkspace(ref.workspace_url);
         const includeReactions = Boolean(input.options.includeReactions);
         const msg = await fetchMessage(client, { ref, includeReactions });
@@ -179,6 +178,7 @@ export async function handleMessageList(input: {
             .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
             .map(toThreadListMessage),
           referenced_users: toReferencedUsers(referencedUserIds, usersById),
+          warning: truncatedSlackUrlWarning(ref),
         }) as Record<string, unknown>;
       }
 

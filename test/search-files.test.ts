@@ -10,6 +10,8 @@ import { SlackApiClient, type SlackAuth } from "../src/slack/client.ts";
 
 const AUTH: SlackAuth = { auth_type: "standard", token: "xoxb-test" };
 const originalFetch = globalThis.fetch;
+const originalWarn = console.warn;
+const originalError = console.error;
 
 function setFetchSequence(responses: Response[]) {
   let index = 0;
@@ -32,12 +34,18 @@ describe("searchFilesViaSearchApi", () => {
 
   afterEach(async () => {
     globalThis.fetch = originalFetch;
+    console.warn = originalWarn;
+    console.error = originalError;
     process.env.XDG_RUNTIME_DIR = undefined;
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  test("skips failed downloads and keeps later successful matches", async () => {
+  test("records failed downloads in download_errors and keeps later successful matches", async () => {
     process.env.XDG_RUNTIME_DIR = tempDir;
+    const warn = mock(() => {});
+    const error = mock(() => {});
+    console.warn = warn as typeof console.warn;
+    console.error = error as typeof console.error;
     setFetchSequence([
       new Response(null, { status: 404 }),
       new Response("ok", {
@@ -67,12 +75,17 @@ describe("searchFilesViaSearchApi", () => {
       ],
     });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0]).toMatchObject({
       title: "Working report",
       mimetype: "text/plain",
     });
-    expect(result[0]!.path.endsWith("/F2.txt")).toBe(true);
+    expect(result.files[0]!.path.endsWith("/F2.txt")).toBe(true);
+    expect(result.download_errors).toEqual([
+      { file_id: "F1", error: "Failed to download file (404)" },
+    ]);
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
   });
 });
 
@@ -132,12 +145,15 @@ describe("searchFilesInChannelsFallback", () => {
       contentType: "file",
     });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0]).toMatchObject({
       title: "Healthy report",
       mimetype: "text/plain",
     });
-    expect(result[0]!.path.endsWith("/F2.txt")).toBe(true);
+    expect(result.files[0]!.path.endsWith("/F2.txt")).toBe(true);
+    expect(result.download_errors).toEqual([
+      { file_id: "F1", error: "Failed to download file (404)" },
+    ]);
   });
 });
 
