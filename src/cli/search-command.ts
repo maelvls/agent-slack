@@ -87,7 +87,9 @@ async function runSearch(input: {
     },
   });
 
-  console.log(JSON.stringify(pruneEmpty(payload), null, 2));
+  console.log(
+    JSON.stringify(pruneEmpty(payload, { keepEmptyArrays: ["messages", "files"] }), null, 2),
+  );
 }
 
 export function registerSearchCommand(input: { program: Command; ctx: CliContext }): void {

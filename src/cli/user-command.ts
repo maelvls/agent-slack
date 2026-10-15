@@ -34,7 +34,7 @@ export function registerUserCommand(input: { program: Command; ctx: CliContext }
             });
           },
         });
-        console.log(JSON.stringify(pruneEmpty(payload), null, 2));
+        console.log(JSON.stringify(pruneEmpty(payload, { keepEmptyArrays: ["users"] }), null, 2));
       } catch (err: unknown) {
         console.error(input.ctx.errorMessage(err));
         process.exitCode = 1;

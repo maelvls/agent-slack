@@ -116,6 +116,8 @@ agent-slack
 Notes:
 
 - Slack data commands output aggressively pruned JSON (`null`/empty fields removed); help, update, and some authentication setup commands output text.
+- The top-level result array of list/search commands (`messages`, `files`, `channels`, `users`, `workflows`, `items`) is always present, so "no results" is `{"messages": []}` rather than `{}`.
+- Read commands keep stderr quiet on success (download failures and hints are reported inside the JSON), so `agent-slack ... 2>&1 | jq` works.
 - Attached files are auto-downloaded and returned as absolute local paths.
 
 ## Authentication (no fancy setup)
@@ -444,7 +446,7 @@ When to use which:
 
 ### Files (snippets/images/attachments)
 
-`message get/list` auto-download attached files to an agent-friendly temp directory and return file metadata in `message.files[]`, including `name` when Slack provides the original filename and `path` for the local download. Failed downloads keep the attachment entry, preserve `message.files[].path` with a local `.download-error.txt` file, and include `message.files[].error`. `search messages` and `search all` use the same attachment shape for message results, while `search files` skips entries whose download fails. Use `search messages --content-type file` when you also need the source-message permalink for a reply.
+`message get/list` auto-download attached files to an agent-friendly temp directory and return file metadata in `message.files[]`, including `name` when Slack provides the original filename and `path` for the local download. Failed downloads keep the attachment entry, preserve `message.files[].path` with a local `.download-error.txt` file, and include `message.files[].error`. `search messages` and `search all` use the same attachment shape for message results, while `search files` leaves failed downloads out of `files[]` and lists them in a top-level `file_download_errors[]` (`file_id`, `error`). Use `search messages --content-type file` when you also need the source-message permalink for a reply.
 
 - macOS default: `~/.agent-slack/tmp/downloads/`
 

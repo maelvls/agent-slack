@@ -173,13 +173,16 @@ export async function handleMessageList(input: {
                 forceRefresh: Boolean(input.options.refreshUsers),
               })
             : new Map();
-        return pruneEmpty({
-          messages: threadMessages
-            .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
-            .map(toThreadListMessage),
-          referenced_users: toReferencedUsers(referencedUserIds, usersById),
-          warning: truncatedSlackUrlWarning(ref),
-        }) as Record<string, unknown>;
+        return pruneEmpty(
+          {
+            messages: threadMessages
+              .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
+              .map(toThreadListMessage),
+            referenced_users: toReferencedUsers(referencedUserIds, usersById),
+            warning: truncatedSlackUrlWarning(ref),
+          },
+          { keepEmptyArrays: ["messages"] },
+        ) as Record<string, unknown>;
       }
 
       const { client, auth, workspace_url } = await input.ctx.getClientForWorkspace(workspaceUrl);
@@ -226,13 +229,16 @@ export async function handleMessageList(input: {
                 forceRefresh: Boolean(input.options.refreshUsers),
               })
             : new Map();
-        return pruneEmpty({
-          channel_id: channelId,
-          messages: channelMessages.map((m) =>
-            toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }),
-          ),
-          referenced_users: toReferencedUsers(referencedUserIds, usersById),
-        }) as Record<string, unknown>;
+        return pruneEmpty(
+          {
+            channel_id: channelId,
+            messages: channelMessages.map((m) =>
+              toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }),
+            ),
+            referenced_users: toReferencedUsers(referencedUserIds, usersById),
+          },
+          { keepEmptyArrays: ["messages"] },
+        ) as Record<string, unknown>;
       }
 
       if (hasReactionFilters) {
@@ -275,12 +281,15 @@ export async function handleMessageList(input: {
               forceRefresh: Boolean(input.options.refreshUsers),
             })
           : new Map();
-      return pruneEmpty({
-        messages: threadMessages
-          .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
-          .map(toThreadListMessage),
-        referenced_users: toReferencedUsers(referencedUserIds, usersById),
-      }) as Record<string, unknown>;
+      return pruneEmpty(
+        {
+          messages: threadMessages
+            .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
+            .map(toThreadListMessage),
+          referenced_users: toReferencedUsers(referencedUserIds, usersById),
+        },
+        { keepEmptyArrays: ["messages"] },
+      ) as Record<string, unknown>;
     },
   });
 }
