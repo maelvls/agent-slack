@@ -134,7 +134,7 @@ function dedupeUserIds(ids: string[]): string[] {
   return Array.from(seen);
 }
 
-function hashWorkspaceUrl(workspaceUrl: string): string {
+export function hashWorkspaceUrl(workspaceUrl: string): string {
   const trimmed = workspaceUrl.trim();
   if (!trimmed) {
     return "unknown";

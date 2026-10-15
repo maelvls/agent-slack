@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import type { CliContext } from "./context.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
+import { searchUsers } from "../slack/user-directory.ts";
 import { getDmChannelForUsers, getUser, listUsers } from "../slack/users.ts";
 
 export function registerUserCommand(input: { program: Command; ctx: CliContext }): void {
@@ -42,9 +43,56 @@ export function registerUserCommand(input: { program: Command; ctx: CliContext }
     });
 
   userCmd
+    .command("search")
+    .description(
+      "Search users by name, handle, email, or title (all terms must match, case-insensitive)",
+    )
+    .argument("<query>", 'Search terms, e.g. "jane doe" or "doe engineer"')
+    .option(
+      "--workspace <url>",
+      "Workspace selector (full URL or unique substring; required if you have multiple workspaces)",
+    )
+    .option("--limit <n>", "Max users (default 20)", "20")
+    .option("--include-bots", "Include bot users")
+    .option(
+      "--refresh",
+      "Refetch the cached user directory (used when Slack's server-side search is unavailable)",
+    )
+    .action(async (...args) => {
+      const [query, options] = args as [
+        string,
+        { workspace?: string; limit: string; includeBots?: boolean; refresh?: boolean },
+      ];
+      try {
+        const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
+        const payload = await input.ctx.withAutoRefresh({
+          workspaceUrl,
+          work: async () => {
+            const { client } = await input.ctx.getClientForWorkspace(workspaceUrl);
+            return await searchUsers(client, {
+              query,
+              limit: Number.parseInt(options.limit, 10),
+              includeBots: Boolean(options.includeBots),
+              refresh: Boolean(options.refresh),
+            });
+          },
+        });
+        // Keep `users` even when empty so callers can rely on the shape.
+        const users = payload.users.map((u) => pruneEmpty(u));
+        console.log(JSON.stringify({ ...payload, users }, null, 2));
+      } catch (err: unknown) {
+        console.error(input.ctx.errorMessage(err));
+        process.exitCode = 1;
+      }
+    });
+
+  userCmd
     .command("get")
     .description("Get a single workspace user")
-    .argument("<user>", "User ID (U.../W...) or @handle/handle")
+    .argument(
+      "<user>",
+      'User ID (U.../W...), @handle/handle, email, or full name (e.g. "Jane Doe"; fails listing candidates if ambiguous)',
+    )
     .option(
       "--workspace <url>",
       "Workspace selector (full URL or unique substring; required if you have multiple workspaces)",

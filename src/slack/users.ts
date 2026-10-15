@@ -1,5 +1,6 @@
 import type { SlackApiClient } from "./client.ts";
 import { asArray, getString, isRecord } from "../lib/object-type-guards.ts";
+import { findUserByName } from "./user-directory.ts";
 import { isUserId } from "./user-id.ts";
 
 export type CompactSlackUser = {
@@ -80,9 +81,16 @@ export async function getUser(client: SlackApiClient, input: string): Promise<Co
     throw new Error("User is empty");
   }
 
-  const userId = await resolveUserId(client, trimmed);
+  // A full name like "Jane Doe" may match only part of a profile; accept it when it
+  // identifies exactly one active user.
+  const looksLikeFullName = /\s/.test(trimmed);
+  const userId = await resolveUser(client, { user: trimmed, allowPartial: looksLikeFullName });
   if (!userId) {
-    throw new Error(`Could not resolve user: ${input}`);
+    throw new Error(
+      looksLikeFullName
+        ? `No user matches "${input}". Try: agent-slack user search "${input}"`
+        : `Could not resolve user: ${input}. Try: agent-slack user search "${input}"`,
+    );
   }
 
   const resp = await client.api("users.info", { user: userId });
@@ -93,8 +101,19 @@ export async function getUser(client: SlackApiClient, input: string): Promise<Co
   return toCompactUser(u);
 }
 
+/**
+ * Resolve a user ID, email, @handle, display name, or real name to a user ID.
+ * Throws when a name matches several users.
+ */
 export async function resolveUserId(client: SlackApiClient, input: string): Promise<string | null> {
-  const trimmed = input.trim();
+  return resolveUser(client, { user: input, allowPartial: false });
+}
+
+async function resolveUser(
+  client: SlackApiClient,
+  input: { user: string; allowPartial: boolean },
+): Promise<string | null> {
+  const trimmed = input.user.trim();
   if (isUserId(trimmed)) {
     return trimmed;
   }
@@ -109,45 +128,12 @@ export async function resolveUserId(client: SlackApiClient, input: string): Prom
         return userId;
       }
     } catch {
-      // Fallback to users.list scan below.
+      // Fall back to the user directory below.
     }
   }
 
-  const handle = trimmed.startsWith("@") ? trimmed.slice(1) : trimmed;
-  if (!handle) {
-    return null;
-  }
-
-  const handleLower = handle.toLowerCase();
-  let cursor: string | undefined;
-  for (;;) {
-    const resp = await client.api("users.list", { limit: 200, cursor });
-    const members = asArray(resp.members).filter(isRecord);
-    const found = members.find((m) => {
-      if (getString(m.name)?.toLowerCase() === handleLower) {
-        return true;
-      }
-      if (looksLikeEmail) {
-        const profile = isRecord(m.profile) ? m.profile : null;
-        const email = profile ? getString(profile.email) : undefined;
-        return Boolean(email) && email?.toLowerCase() === trimmed.toLowerCase();
-      }
-      return false;
-    });
-    if (found) {
-      const id = getString(found.id);
-      if (id) {
-        return id;
-      }
-    }
-    const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
-    const next = meta ? getString(meta.next_cursor) : undefined;
-    if (!next) {
-      break;
-    }
-    cursor = next;
-  }
-  return null;
+  const user = await findUserByName(client, { name: trimmed, allowPartial: input.allowPartial });
+  return user?.id ?? null;
 }
 
 async function fetchDmMap(client: SlackApiClient): Promise<Map<string, string>> {
