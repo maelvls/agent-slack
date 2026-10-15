@@ -112,4 +112,29 @@ describe("agent-facing help contracts", () => {
     expect(dmOpen.registeredArguments[0]?.description).toContain("One to 8 other user");
     expect(dmOpen.registeredArguments[0]?.description).toContain("caller is implicit");
   });
+
+  test("message read/write commands document --channel/--text but hide guessed spellings", () => {
+    const program = buildProgram();
+    const getHelp = findCommand(program, "message", "get").helpInformation();
+    expect(getHelp).toContain("--channel <channel>");
+    expect(getHelp).not.toContain("--max-content-chars");
+    expect(getHelp).not.toMatch(/--thread(?!-ts)/);
+    const sendHelp = findCommand(program, "message", "send").helpInformation();
+    expect(sendHelp).toContain("--text <text>");
+    expect(sendHelp).toContain("--channel <channel>");
+  });
+
+  test("unknown options suggest the closest documented flag", async () => {
+    const program = buildProgram();
+    const errors: string[] = [];
+    findCommand(program, "message", "list")
+      .exitOverride()
+      .configureOutput({ writeErr: (str) => errors.push(str) });
+    await expect(
+      program.parseAsync(["message", "list", "C0123456789", "--thred-ts", "1.2"], {
+        from: "user",
+      }),
+    ).rejects.toThrow();
+    expect(errors.join("")).toContain("Did you mean --thread-ts?");
+  });
 });
