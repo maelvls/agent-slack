@@ -127,7 +127,6 @@ export async function downloadMessageFiles(input: {
             httpStatus: err.httpStatus,
             path,
           };
-          console.error(`Warning: skipping file ${file.id}: ${err.message}`);
         }
       } else {
         const ext = inferFileExtension(file);
@@ -146,7 +145,6 @@ export async function downloadMessageFiles(input: {
               error: result.error,
             }),
           };
-          console.error(`Warning: skipping file ${file.id}: ${result.error}`);
         } else {
           downloadedPaths[file.id] = result;
         }

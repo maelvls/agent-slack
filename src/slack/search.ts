@@ -3,7 +3,13 @@ import type { CompactSlackMessage } from "./messages.ts";
 import type { CompactSlackUser } from "./users.ts";
 import { buildSlackSearchQuery } from "./search-query.ts";
 import { searchFilesRaw, searchMessagesRaw } from "./search-raw.ts";
-import { searchFilesInChannelsFallback, searchFilesViaSearchApi } from "./search-files.ts";
+import {
+  type FileDownloadError,
+  type SearchFile,
+  type SearchFilesResult,
+  searchFilesInChannelsFallback,
+  searchFilesViaSearchApi,
+} from "./search-files.ts";
 import {
   type SearchCompactMessage,
   searchMessagesInChannelsFallback,
@@ -31,7 +37,8 @@ export type SearchOptions = {
 
 export type SearchResult = {
   messages?: SearchCompactMessage[];
-  files?: { title?: string; mimetype?: string; mode?: string; path: string }[];
+  files?: SearchFile[];
+  file_download_errors?: FileDownloadError[];
   referenced_users?: Record<string, CompactSlackUser>;
 };
 
@@ -97,8 +104,9 @@ export async function searchSlack(input: {
   }
 
   if (input.options.kind === "files" || input.options.kind === "all") {
+    let fileResult: SearchFilesResult;
     if (input.options.channels?.length) {
-      out.files = await searchFilesInChannelsFallback(input.client, {
+      fileResult = await searchFilesInChannelsFallback(input.client, {
         auth: input.auth,
         query: input.options.query,
         channels: input.options.channels,
@@ -110,7 +118,7 @@ export async function searchSlack(input: {
       });
     } else {
       const rawMatches = await searchFilesRaw(input.client, { query: slackQuery, limit });
-      out.files = await searchFilesViaSearchApi(input.client, {
+      fileResult = await searchFilesViaSearchApi(input.client, {
         auth: input.auth,
         slack_query: slackQuery,
         limit,
@@ -118,6 +126,8 @@ export async function searchSlack(input: {
         rawMatches,
       });
     }
+    out.files = fileResult.files;
+    out.file_download_errors = fileResult.download_errors;
   }
 
   return out;

@@ -339,7 +339,6 @@ async function downloadFilesForMessage(input: {
           error: result.error,
         }),
       };
-      console.warn(`Warning: file ${f.id}: ${result.error}`);
     } else {
       input.downloadedPaths[f.id] = result;
     }

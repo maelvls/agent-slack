@@ -8,6 +8,10 @@ import { asArray, getString, isRecord } from "../lib/object-type-guards.ts";
 
 export type ContentType = "any" | "text" | "image" | "snippet" | "file";
 
+export type SearchFile = { title?: string; mimetype?: string; mode?: string; path: string };
+export type FileDownloadError = { file_id: string; error: string };
+export type SearchFilesResult = { files: SearchFile[]; download_errors: FileDownloadError[] };
+
 export async function searchFilesViaSearchApi(
   client: SlackApiClient,
   input: {
@@ -17,14 +21,15 @@ export async function searchFilesViaSearchApi(
     contentType: ContentType;
     rawMatches: Record<string, unknown>[];
   },
-): Promise<{ title?: string; mimetype?: string; mode?: string; path: string }[]> {
+): Promise<SearchFilesResult> {
   const matches = input.rawMatches;
   if (matches.length === 0) {
-    return [];
+    return { files: [], download_errors: [] };
   }
 
   const downloadsDir = await ensureDownloadsDir();
-  const out: { title?: string; mimetype?: string; mode?: string; path: string }[] = [];
+  const out: SearchFile[] = [];
+  const downloadErrors: FileDownloadError[] = [];
 
   for (const f of matches) {
     const mode = getString(f.mode);
@@ -53,7 +58,7 @@ export async function searchFilesViaSearchApi(
       preferredName: `${id}${ext ? `.${ext}` : ""}`,
     });
     if (!result.ok) {
-      console.warn(`Warning: skipping file ${id}: ${result.error}`);
+      downloadErrors.push({ file_id: id, error: result.error });
       continue;
     }
     const title = (getString(f.title) || getString(f.name) || "").trim();
@@ -68,7 +73,7 @@ export async function searchFilesViaSearchApi(
     }
   }
 
-  return out;
+  return { files: out, download_errors: downloadErrors };
 }
 
 export async function searchFilesInChannelsFallback(
@@ -83,7 +88,7 @@ export async function searchFilesInChannelsFallback(
     limit: number;
     contentType: ContentType;
   },
-): Promise<{ title?: string; mimetype?: string; mode?: string; path: string }[]> {
+): Promise<SearchFilesResult> {
   const channelIds = await Promise.all(input.channels.map((c) => resolveChannelId(client, c)));
   const userId = input.user ? await resolveUserId(client, input.user) : undefined;
   const queryLower = input.query.trim().toLowerCase();
@@ -92,7 +97,8 @@ export async function searchFilesInChannelsFallback(
   const ts_to = input.before ? dateToUnixSeconds(input.before, "end") : undefined;
 
   const downloadsDir = await ensureDownloadsDir();
-  const out: { title?: string; mimetype?: string; mode?: string; path: string }[] = [];
+  const out: SearchFile[] = [];
+  const downloadErrors: FileDownloadError[] = [];
 
   for (const channelId of channelIds) {
     let page = 1;
@@ -144,7 +150,7 @@ export async function searchFilesInChannelsFallback(
           preferredName: `${id}${ext ? `.${ext}` : ""}`,
         });
         if (!result.ok) {
-          console.warn(`Warning: skipping file ${id}: ${result.error}`);
+          downloadErrors.push({ file_id: id, error: result.error });
           continue;
         }
         out.push({
@@ -154,7 +160,7 @@ export async function searchFilesInChannelsFallback(
           path: result.path,
         });
         if (out.length >= input.limit) {
-          return out;
+          return { files: out, download_errors: downloadErrors };
         }
       }
 
@@ -171,7 +177,7 @@ export async function searchFilesInChannelsFallback(
     }
   }
 
-  return out;
+  return { files: out, download_errors: downloadErrors };
 }
 
 function passesFileContentTypeFilter(

@@ -5,7 +5,7 @@ import { getPackageVersion } from "./lib/version.ts";
 import { createCliContext } from "./cli/context.ts";
 import { registerAuthCommand } from "./cli/auth-command.ts";
 import { registerCanvasCommand } from "./cli/canvas-command.ts";
-import { registerMessageCommand } from "./cli/message-command.ts";
+import { registerMessageCommand, registerThreadCommand } from "./cli/message-command.ts";
 import { registerSearchCommand } from "./cli/search-command.ts";
 import { registerLaterCommand } from "./cli/later-command.ts";
 import { registerHuddleCommand } from "./cli/huddle-command.ts";
@@ -42,6 +42,9 @@ program
   .name("agent-slack")
   .description("Slack automation CLI for AI agents")
   .version(getPackageVersion())
+  // Commander's default, made explicit: subcommands inherit it, and agents
+  // recover from a typo far faster with a "(Did you mean ...?)" hint.
+  .showSuggestionAfterError(true)
   .option(
     "--safe-mode",
     'Human-in-the-loop enforcement: redirect "message send" to the draft editor and block "message edit"/"message delete" (also: AGENT_SLACK_SAFE_MODE=1)',
@@ -53,6 +56,7 @@ const ctx = createCliContext();
 
 registerAuthCommand({ program, ctx });
 registerMessageCommand({ program, ctx });
+registerThreadCommand({ program, ctx });
 registerCanvasCommand({ program, ctx });
 registerSearchCommand({ program, ctx });
 registerLaterCommand({ program, ctx });

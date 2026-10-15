@@ -9,6 +9,7 @@ import type { SlackAuth } from "../src/slack/client.ts";
 const AUTH: SlackAuth = { auth_type: "standard", token: "xoxb-test" };
 
 const originalFetch = globalThis.fetch;
+const originalError = console.error;
 
 function setFetchMock(fn: (...args: unknown[]) => Promise<Response>) {
   const mocked = mock(fn) as unknown as typeof globalThis.fetch;
@@ -237,10 +238,13 @@ describe("downloadMessageFiles", () => {
 
   afterEach(async () => {
     globalThis.fetch = originalFetch;
+    console.error = originalError;
     await rm(tempDir, { recursive: true, force: true });
   });
 
   test("records canvas auth failures as structured errors", async () => {
+    const error = mock(() => {});
+    console.error = error as typeof console.error;
     mockFetchOk(
       "<html><head><title>Sign in</title></head><body>Sign in</body></html>",
       "text/html",
@@ -274,12 +278,15 @@ describe("downloadMessageFiles", () => {
         httpStatus: undefined,
         path: join(tempDir, "agent-slack", "tmp", "downloads", "F1.download-error.txt"),
       });
+      expect(error).not.toHaveBeenCalled();
     } finally {
       process.env.XDG_RUNTIME_DIR = originalXdg;
     }
   });
 
   test("records non-canvas download failures with a local error path", async () => {
+    const error = mock(() => {});
+    console.error = error as typeof console.error;
     mockFetchStatus(404);
     const originalXdg = process.env.XDG_RUNTIME_DIR;
     process.env.XDG_RUNTIME_DIR = tempDir;
@@ -310,6 +317,7 @@ describe("downloadMessageFiles", () => {
         httpStatus: 404,
         path: join(tempDir, "agent-slack", "tmp", "downloads", "F2.download-error.txt"),
       });
+      expect(error).not.toHaveBeenCalled();
     } finally {
       process.env.XDG_RUNTIME_DIR = originalXdg;
     }

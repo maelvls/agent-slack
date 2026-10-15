@@ -9,7 +9,7 @@ import { pruneEmpty } from "../lib/compact-json.ts";
 import { parseMsgTarget } from "./targets.ts";
 import { resolveChannelId } from "../slack/channels.ts";
 import { downloadMessageFiles } from "./message-file-downloads.ts";
-import { warnOnTruncatedSlackUrl } from "./message-url-warning.ts";
+import { truncatedSlackUrlWarning } from "./message-url-warning.ts";
 import { getThreadSummary, toThreadListMessage } from "./message-thread-info.ts";
 import type { MessageCommandOptions } from "./message-actions.ts";
 import {
@@ -41,7 +41,6 @@ export async function handleMessageGet(input: {
     work: async () => {
       if (target.kind === "url") {
         const { ref } = target;
-        warnOnTruncatedSlackUrl(ref);
         const { client, auth } = await input.ctx.getClientForWorkspace(ref.workspace_url);
         const includeReactions = Boolean(input.options.includeReactions);
         const msg = await fetchMessage(client, { ref, includeReactions });
@@ -69,6 +68,7 @@ export async function handleMessageGet(input: {
           message,
           thread,
           referenced_users: toReferencedUsers(referencedUserIds, usersById),
+          warning: truncatedSlackUrlWarning(ref),
         }) as Record<string, unknown>;
       }
 
@@ -150,7 +150,6 @@ export async function handleMessageList(input: {
           );
         }
         const { ref } = target;
-        warnOnTruncatedSlackUrl(ref);
         const { client, auth } = await input.ctx.getClientForWorkspace(ref.workspace_url);
         const includeReactions = Boolean(input.options.includeReactions);
         const msg = await fetchMessage(client, { ref, includeReactions });
@@ -174,12 +173,16 @@ export async function handleMessageList(input: {
                 forceRefresh: Boolean(input.options.refreshUsers),
               })
             : new Map();
-        return pruneEmpty({
-          messages: threadMessages
-            .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
-            .map(toThreadListMessage),
-          referenced_users: toReferencedUsers(referencedUserIds, usersById),
-        }) as Record<string, unknown>;
+        return pruneEmpty(
+          {
+            messages: threadMessages
+              .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
+              .map(toThreadListMessage),
+            referenced_users: toReferencedUsers(referencedUserIds, usersById),
+            warning: truncatedSlackUrlWarning(ref),
+          },
+          { keepEmptyArrays: ["messages"] },
+        ) as Record<string, unknown>;
       }
 
       const { client, auth, workspace_url } = await input.ctx.getClientForWorkspace(workspaceUrl);
@@ -226,13 +229,16 @@ export async function handleMessageList(input: {
                 forceRefresh: Boolean(input.options.refreshUsers),
               })
             : new Map();
-        return pruneEmpty({
-          channel_id: channelId,
-          messages: channelMessages.map((m) =>
-            toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }),
-          ),
-          referenced_users: toReferencedUsers(referencedUserIds, usersById),
-        }) as Record<string, unknown>;
+        return pruneEmpty(
+          {
+            channel_id: channelId,
+            messages: channelMessages.map((m) =>
+              toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }),
+            ),
+            referenced_users: toReferencedUsers(referencedUserIds, usersById),
+          },
+          { keepEmptyArrays: ["messages"] },
+        ) as Record<string, unknown>;
       }
 
       if (hasReactionFilters) {
@@ -275,12 +281,15 @@ export async function handleMessageList(input: {
               forceRefresh: Boolean(input.options.refreshUsers),
             })
           : new Map();
-      return pruneEmpty({
-        messages: threadMessages
-          .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
-          .map(toThreadListMessage),
-        referenced_users: toReferencedUsers(referencedUserIds, usersById),
-      }) as Record<string, unknown>;
+      return pruneEmpty(
+        {
+          messages: threadMessages
+            .map((m) => toCompactMessage(m, { maxBodyChars, includeReactions, downloadedPaths }))
+            .map(toThreadListMessage),
+          referenced_users: toReferencedUsers(referencedUserIds, usersById),
+        },
+        { keepEmptyArrays: ["messages"] },
+      ) as Record<string, unknown>;
     },
   });
 }

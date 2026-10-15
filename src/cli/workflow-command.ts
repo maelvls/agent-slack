@@ -39,7 +39,9 @@ export function registerWorkflowCommand(input: { program: Command; ctx: CliConte
             return await listChannelWorkflows(client, channelId);
           },
         });
-        console.log(JSON.stringify(pruneEmpty(payload), null, 2));
+        console.log(
+          JSON.stringify(pruneEmpty(payload, { keepEmptyArrays: ["workflows"] }), null, 2),
+        );
       } catch (err: unknown) {
         console.error(input.ctx.errorMessage(err));
         process.exitCode = 1;

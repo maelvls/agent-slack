@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { CliContext } from "./context.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
 import { searchSlack } from "../slack/search.ts";
+import { addHiddenOptionAlias } from "./options.ts";
 
 type SearchCommandOptions = {
   workspace?: string;
@@ -17,6 +18,7 @@ type SearchCommandOptions = {
 };
 
 function addSearchOptions(cmd: Command): Command {
+  addHiddenOptionAlias(cmd, { flags: "--max-body-chars <n>", target: "maxContentChars" });
   return cmd
     .option(
       "--workspace <url>",
@@ -87,7 +89,9 @@ async function runSearch(input: {
     },
   });
 
-  console.log(JSON.stringify(pruneEmpty(payload), null, 2));
+  console.log(
+    JSON.stringify(pruneEmpty(payload, { keepEmptyArrays: ["messages", "files"] }), null, 2),
+  );
 }
 
 export function registerSearchCommand(input: { program: Command; ctx: CliContext }): void {
@@ -99,8 +103,11 @@ export function registerSearchCommand(input: { program: Command; ctx: CliContext
     kind: "messages" | "files" | "all";
     name: string;
     desc: string;
+    isDefault?: boolean;
   }): Command =>
-    addSearchOptions(searchCmd.command(spec.name).description(spec.desc))
+    addSearchOptions(
+      searchCmd.command(spec.name, { isDefault: spec.isDefault }).description(spec.desc),
+    )
       .argument("<query>", "Search query")
       .action(async (...args) => {
         const [query, options] = args as [string, SearchCommandOptions];
@@ -113,6 +120,11 @@ export function registerSearchCommand(input: { program: Command; ctx: CliContext
       });
 
   create({ kind: "all", name: "all", desc: "Search messages and files" });
-  create({ kind: "messages", name: "messages", desc: "Search messages" });
+  create({
+    kind: "messages",
+    name: "messages",
+    desc: "Search messages (default when no subcommand is given)",
+    isDefault: true,
+  });
   create({ kind: "files", name: "files", desc: "Search files" });
 }

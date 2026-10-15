@@ -19,4 +19,32 @@ describe("pruneEmpty", () => {
       h: [2, { z: "a" }],
     });
   });
+
+  test("keepEmptyArrays keeps listed top-level arrays as [] and still prunes the rest", () => {
+    const input: Record<string, unknown> = {
+      channel_id: "C123",
+      messages: [],
+      files: [null, "", {}],
+      users: undefined,
+      referenced_users: {},
+      other: [],
+      nested: { messages: [], keep: 1 },
+    };
+    expect(
+      pruneEmpty(input, { keepEmptyArrays: ["messages", "files", "users", "referenced_users"] }),
+    ).toEqual({
+      channel_id: "C123",
+      messages: [],
+      files: [],
+      nested: { keep: 1 },
+    });
+  });
+
+  test("keepEmptyArrays still prunes empty fields inside kept arrays", () => {
+    expect(
+      pruneEmpty({ messages: [{ ts: "1", files: [], content: "" }] } as Record<string, unknown>, {
+        keepEmptyArrays: ["messages"],
+      }),
+    ).toEqual({ messages: [{ ts: "1" }] });
+  });
 });

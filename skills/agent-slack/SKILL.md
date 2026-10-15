@@ -13,8 +13,43 @@ curl -fsSL https://raw.githubusercontent.com/stablyai/agent-slack/main/install.s
 
 Fallback: `npm i -g agent-slack` (Node >= 22.5).
 
-Run `agent-slack --help` or the relevant subcommand help before guessing a command or flag.
+The common tasks below cover most needs; check `agent-slack <command> --help` for anything else instead of guessing a command or flag.
 If a capability named here is absent from installed help, report version skew instead of guessing. Do not self-update the CLI without explicit authorization.
+
+## Common tasks
+
+```bash
+# Read a whole thread: a message URL, or a channel plus any ts in the thread (root or reply)
+agent-slack message list "https://<ws>.slack.com/archives/C123/p1790000000123456" --resolve-users
+agent-slack message list C123 1790000000.123456
+
+# Read one message
+agent-slack message get "https://<ws>.slack.com/archives/C123/p1790000000123456"
+agent-slack message get C123 1790000000.123456
+
+# Channel or DM history (--oldest/--latest take a ts)
+agent-slack message list C123 --limit 50
+
+# Find a person by name, handle, email, or title, then fetch one
+agent-slack user search "jane doe"
+agent-slack user get "Jane Doe"     # also U123, @handle, or email; lists candidates if ambiguous
+
+# Message someone: a U... target opens or reuses the DM
+agent-slack message send U123 "text"
+agent-slack user dm-open U123       # just the DM channel ID, e.g. to list its history
+
+# Search (Slack query syntax works: from:@handle, in:#channel, before:/after:)
+agent-slack search messages "query" --channel C123 --user @handle --after 2026-01-01 --limit 20
+```
+
+Pitfalls:
+
+- stdout is always pure JSON for data commands; warnings and errors go to stderr. Pipe with `2>/dev/null | jq` or write stdout to a file. Never `2>&1 | jq`: an error then shows up as a jq parse error and the real message is lost.
+- Result arrays (`messages`, `users`, `channels`, `files`) are present even when empty, so `{"messages": []}` means no results.
+- A `ts` from search is often a reply. Pass it to `message list <channel> <ts>` to get the whole thread; do not assume it is the root.
+- Bot messages have no `author.user_id`; use `.author.user_id // .author.bot_id` in jq.
+- Don't wrap calls in `timeout` (absent on macOS by default). The CLI has its own watchdog, set with `AGENT_SLACK_COMMAND_TIMEOUT_MS`.
+- Avoid paging `user list` to find someone; `user search` is one call.
 
 ## Safety
 

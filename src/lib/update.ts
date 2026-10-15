@@ -284,10 +284,12 @@ export async function performUpdate(
 /**
  * Background update check. Writes a notice to stderr if an update is available.
  * Swallows all errors silently. Respects the 24-hour throttle.
+ * Only runs when stderr is a terminal, so the notice never ends up in piped
+ * output (e.g. `agent-slack ... 2>&1 | jq`).
  * Disable with AGENT_SLACK_NO_UPDATE_CHECK=1.
  */
 export async function backgroundUpdateCheck(): Promise<void> {
-  if (process.env.AGENT_SLACK_NO_UPDATE_CHECK === "1") {
+  if (process.env.AGENT_SLACK_NO_UPDATE_CHECK === "1" || !process.stderr.isTTY) {
     return;
   }
   try {

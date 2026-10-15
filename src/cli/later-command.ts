@@ -99,7 +99,13 @@ export function registerLaterCommand(input: { program: Command; ctx: CliContext 
             },
           });
 
-          console.log(JSON.stringify(pruneEmpty(payload), null, 2));
+          console.log(
+            JSON.stringify(
+              pruneEmpty(payload, { keepEmptyArrays: options.countsOnly ? [] : ["items"] }),
+              null,
+              2,
+            ),
+          );
         } catch (err: unknown) {
           console.error(input.ctx.errorMessage(err));
           process.exitCode = 1;

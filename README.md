@@ -74,8 +74,8 @@ agent-slack
 │   ├── import-firefox
 │   └── parse-curl
 ├── message
-│   ├── get   <target>             # fetch 1 message (+ thread meta )
-│   ├── list  <target>             # fetch thread or recent channel messages
+│   ├── get   <target> [ts]        # fetch 1 message (+ thread meta )
+│   ├── list  <target> [ts]        # fetch thread or recent channel messages
 │   ├── send  <target> [text]      # send / reply / schedule (supports --attach, --blocks)
 │   ├── scheduled
 │   │   ├── list                   # list pending scheduled messages
@@ -103,7 +103,7 @@ agent-slack
 │   └── list                       # huddle history (who, when, how long)
 ├── search
 │   ├── all      <query>           # messages + files
-│   ├── messages <query>
+│   ├── messages <query>           # default subcommand
 │   └── files    <query>
 ├── workflow
 │   ├── list    <channel>          # workflows bookmarked in a channel
@@ -119,6 +119,8 @@ agent-slack
 Notes:
 
 - Slack data commands output aggressively pruned JSON (`null`/empty fields removed); help, update, and some authentication setup commands output text.
+- The top-level result array of list/search commands (`messages`, `files`, `channels`, `users`, `workflows`, `items`) is always present, so "no results" is `{"messages": []}` rather than `{}`.
+- Read commands keep stderr quiet on success (download failures and hints are reported inside the JSON), so `agent-slack ... 2>&1 | jq` works.
 - Attached files are auto-downloaded and returned as absolute local paths.
 
 ## Authentication (no fancy setup)
@@ -172,6 +174,13 @@ agent-slack message get "#general" --ts "1770165109.628379"
 
 # List a full thread by channel + thread root ts
 agent-slack message list "#general" --thread-ts "1770165109.000001"
+
+# The ts can also be the second positional; for list, any ts in the thread (root or reply) works
+agent-slack message get "#general" "1770165109.628379"
+agent-slack message list "#general" "1770165109.628379"
+
+# --channel can replace the positional target (also on send/edit/delete/react)
+agent-slack message list --channel C0123ABCDEF --limit 10
 ```
 
 If you have multiple workspaces configured and you use a channel **name** (`#channel` / `channel`), you must pass `--workspace` (or set `SLACK_WORKSPACE_URL`).
@@ -306,6 +315,7 @@ agent-slack message delete "#general" --workspace "myteam" --ts "1770165109.6283
 
 Send options for `message send`:
 
+- `--text <text>` pass the message text as a flag instead of the positional `[text]` (also on `message edit`)
 - `--attach <path>` upload a local file (repeatable; `<text>` is optional when attaching files)
 - `--blocks <path>` send raw [Block Kit](https://docs.slack.dev/block-kit/) blocks from a JSON file (or `-` for stdin). Bypasses the automatic markdown-to-rich-text conversion, unlocking header/divider/section/table blocks and other structured layouts. Cannot be combined with `--attach`.
 - `--reply-broadcast` when replying in a thread, also post the reply to the parent channel (Slack's "Also send to #channel" checkbox). For channel targets, pair with `--thread-ts`; for URL targets, the thread context is derived from the message. Not supported for DM targets; cannot be combined with `--attach`.
@@ -447,7 +457,7 @@ When to use which:
 
 ### Files (snippets/images/attachments)
 
-`message get/list` auto-download attached files to an agent-friendly temp directory and return file metadata in `message.files[]`, including `name` when Slack provides the original filename and `path` for the local download. Failed downloads keep the attachment entry, preserve `message.files[].path` with a local `.download-error.txt` file, and include `message.files[].error`. `search messages` and `search all` use the same attachment shape for message results, while `search files` skips entries whose download fails. Use `search messages --content-type file` when you also need the source-message permalink for a reply.
+`message get/list` auto-download attached files to an agent-friendly temp directory and return file metadata in `message.files[]`, including `name` when Slack provides the original filename and `path` for the local download. Failed downloads keep the attachment entry, preserve `message.files[].path` with a local `.download-error.txt` file, and include `message.files[].error`. `search messages` and `search all` use the same attachment shape for message results, while `search files` leaves failed downloads out of `files[]` and lists them in a top-level `file_download_errors[]` (`file_id`, `error`). Use `search messages --content-type file` when you also need the source-message permalink for a reply.
 
 - macOS default: `~/.agent-slack/tmp/downloads/`
 
@@ -461,6 +471,9 @@ agent-slack search all "smoke tests failed" --channel "#alerts" --after 2026-01-
 
 # Search messages only
 agent-slack search messages "stably ai" --user "@stablyai" --channel general
+
+# `messages` is the default subcommand, so this is the same search
+agent-slack search "stably ai" --user "@stablyai" --channel general
 
 # Search files only (downloads files and returns local paths)
 agent-slack search files "testing" --content-type snippet --limit 10

@@ -1,6 +1,31 @@
-export function pruneEmpty<T>(value: T): T {
+export type PruneEmptyOptions = {
+  // Top-level array keys emitted as [] instead of being dropped when empty, so
+  // that `jq '.messages[]'` on "no results" yields nothing rather than an error.
+  // Keys that are absent (or null) on the input stay absent.
+  keepEmptyArrays?: readonly string[];
+};
+
+export function pruneEmpty<T>(value: T, options?: PruneEmptyOptions): T {
+  const keep = options?.keepEmptyArrays ?? [];
+  if (keep.length > 0 && isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) {
+      const next = pruneEmptyInternal(v);
+      if (next !== undefined) {
+        out[k] = next;
+      } else if (Array.isArray(v) && keep.includes(k)) {
+        out[k] = [];
+      }
+    }
+    return out as T;
+  }
+
   const pruned = pruneEmptyInternal(value);
   return (pruned === undefined ? ({} as T) : (pruned as T)) as T;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function pruneEmptyInternal(value: unknown): unknown {
