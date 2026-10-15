@@ -97,7 +97,9 @@ agent-slack
 │   └── invite                      # invite users to channel
 ├── user
 │   ├── list
+│   ├── search <query>              # find users by name, handle, email, or title
 │   ├── get <user>
+│   ├── dm-open <users...>
 │   └── org-chart [user]           # manager chain, peers, direct reports
 ├── huddle
 │   └── list                       # huddle history (who, when, how long)
@@ -494,9 +496,16 @@ Treat Slack user IDs beginning with `U` or `W` equivalently.
 # List users (email requires appropriate Slack scopes; fields are pruned if missing)
 agent-slack user list --workspace "https://workspace.slack.com" --limit 200 | jq .
 
-# Get one user by id or handle
+# Find users by name, handle, email, or title (every term must match; case- and
+# accent-insensitive; exact handle/name matches first). Returns { "users": [...], "count": n },
+# plus "has_more": true when more than --limit (default 20) users match.
+agent-slack user search "jane doe" --workspace "https://workspace.slack.com" | jq .
+agent-slack user search "doe engineer" --limit 5 --include-bots | jq .
+
+# Get one user by id, handle, email, or full name
 agent-slack user get U12345678 --workspace "https://workspace.slack.com" | jq .
 agent-slack user get "@alice" --workspace "https://workspace.slack.com" | jq .
+agent-slack user get "Jane Doe" --workspace "https://workspace.slack.com" | jq .
 
 # Open a DM or group DM with one to eight other users (the caller is implicit)
 agent-slack user dm-open "@alice" "@bob" --workspace "https://workspace.slack.com" | jq .
@@ -507,6 +516,17 @@ agent-slack user org-chart U12345678 --all-peers
 ```
 
 `user org-chart` uses Slack's undocumented `users.profile.relationships.getOrgChart` client endpoint (the org chart on a profile) and requires browser auth (xoxc/xoxd).
+
+Name lookups (`user search`, `user get`, and every `--user`/`--users` option that takes a handle)
+use Slack's server-side user search when you are signed in with browser auth (xoxc/xoxd), so they
+take one request even in very large workspaces. That search indexes names and handles; email and
+title terms narrow its results. With other tokens, or if that search fails, agent-slack caches the
+workspace's `users.list` under `~/.agent-slack` for 24 hours (`user search --refresh` refetches
+it). Very large directories are cached across several runs; a lookup that misses while the cache is
+still filling says so, and re-running continues it.
+
+`user get "Jane Doe"` returns the user when exactly one active user matches; when several do, it
+fails and lists the candidates (ID, handle, name, title) so you can pick one by ID or handle.
 
 ### Unreads (inbox view)
 

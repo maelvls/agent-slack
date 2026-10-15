@@ -95,6 +95,7 @@ export class SlackApiClient {
   private auth: SlackAuth;
   private web?: WebClient;
   private workspaceUrl?: string;
+  private edgeTeamId?: Promise<string>;
 
   constructor(auth: SlackAuth, options?: { workspaceUrl?: string }) {
     this.auth = auth;
@@ -108,6 +109,69 @@ export class SlackApiClient {
         ...getKeychainTlsOption(),
       });
     }
+  }
+
+  getWorkspaceUrl(): string | undefined {
+    return this.workspaceUrl;
+  }
+
+  /**
+   * Call Slack's edge API (edgeapi.slack.com), which the web client uses for fast
+   * directory lookups such as `users/search`. Requires browser auth (xoxc/xoxd).
+   */
+  async edgeApi(path: string, body: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const { auth } = this;
+    if (auth.auth_type !== "browser") {
+      throw new Error("Slack edge API requires browser auth");
+    }
+    const teamId = await this.getEdgeTeamId();
+    const url = `https://edgeapi.slack.com/cache/${teamId}/${path.replace(/^\//, "")}`;
+    const timeoutMs = getSlackApiTimeoutMs();
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Cookie: `d=${encodeURIComponent(auth.xoxd_cookie)}`,
+          "Content-Type": "application/json",
+          Origin: "https://app.slack.com",
+          "User-Agent": getUserAgent(),
+        },
+        body: JSON.stringify({ token: auth.xoxc_token, ...body }),
+        signal: timeoutSignal(timeoutMs),
+      });
+    } catch (error) {
+      if (isAbortOrTimeoutError(error)) {
+        throw slackApiTimeoutError(`edge ${path}`, timeoutMs);
+      }
+      throw error;
+    }
+
+    const data: unknown = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(`Slack HTTP ${response.status} calling edge ${path}`);
+    }
+    if (!isRecord(data) || data.ok !== true) {
+      const error = isRecord(data) && typeof data.error === "string" ? data.error : null;
+      throw new Error(error || `Slack API error calling edge ${path}`);
+    }
+    return data;
+  }
+
+  // On Enterprise Grid the edge API is keyed by the enterprise ID; the team ID
+  // returns invalid_auth there.
+  private getEdgeTeamId(): Promise<string> {
+    this.edgeTeamId ??= (async () => {
+      const resp = await this.api("auth.test");
+      const id =
+        (typeof resp.enterprise_id === "string" && resp.enterprise_id) ||
+        (typeof resp.team_id === "string" && resp.team_id);
+      if (!id) {
+        throw new Error("auth.test returned no team_id");
+      }
+      return id;
+    })();
+    return this.edgeTeamId;
   }
 
   /**

@@ -22,3 +22,9 @@ export async function writeJsonFile(path: string, data: unknown): Promise<void> 
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
 }
+
+/** Like writeJsonFile, without indentation, for large cache files. */
+export async function writeCompactJsonFile(path: string, data: unknown): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(data)}\n`, { mode: 0o600 });
+}
