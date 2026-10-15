@@ -80,7 +80,7 @@ Prefer editing over delete-and-resend when a message has replies: check `thread.
 
 Slack-native drafts (`message draft list|create|update|delete`) manage drafts that appear in the user's Slack client; `create` posts nothing. `create` and `update` accept repeatable `--attach <path>`; on `update` the files are added to the draft's existing attachments rather than replacing them. They use undocumented session endpoints and require browser-style auth (xoxc/xoxd).
 
-`user org-chart [user]` returns the manager chain (nearest first), peers, and direct reports as user IDs; add `--resolve-users` for names. With browser auth, pass a user ID: handle and email inputs fall back to scanning `users.list`, which is slow and rate-limited on large workspaces.
+`user org-chart [user]` returns the manager chain (nearest first), peers, and direct reports as user IDs; add `--resolve-users` for names.
 
 `huddle list` reads huddle history (who, when, how long) newest-ended first; `--after`/`--before` take local `YYYY-MM-DD`. Huddle chat and notes live in the thread: `message list <channel_id> --thread-ts <thread_ts>`. It uses an undocumented endpoint and requires browser-style auth.
 
