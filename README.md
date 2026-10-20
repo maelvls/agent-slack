@@ -289,6 +289,7 @@ While safe mode is active:
 
 - `message send` → redirected to the draft editor with the text pre-filled; you review and send from the browser. The output includes `"safe_mode": true` and `"redirected_from": "send"`, and a warning is printed to stderr. Flags the editor cannot represent (`--attach`, `--blocks`, `--schedule`, `--schedule-in`, `--reply-broadcast`) are rejected with an error instead of being silently dropped.
 - `message edit` and `message delete` → blocked with an error.
+- In CI, where no editor can open, `message send` and `message compose` fail with an error instead of posting.
 - All read operations (`get`, `list`, `search`, etc.) and reactions are unchanged.
 
 The env var accepts `1`, `true`, `yes`, or `on` (case-insensitive); anything else leaves safe mode off.
@@ -483,7 +484,7 @@ agent-slack search files "testing" --content-type snippet --limit 10
 
 Tips:
 
-- For reliable results, include `--channel ...` (channel-scoped search scans history/files and filters locally).
+- For reliable results, include `--channel ...` (channel-scoped search scans history/files and filters locally). Message scans stop at 2000 messages per channel; channels cut short are listed in `truncated_channels`, so narrow with `--after`/`--before`.
 - Use `--workspace <url-or-unique-substring>` when using `#channel` names across multiple workspaces.
 
 <!-- AI search (assistant.search.*) is described in design.doc but not currently implemented. -->
@@ -604,6 +605,9 @@ agent-slack later list --counts-only
 
 # Filter by state: in_progress, completed, archived, all
 agent-slack later list --state completed
+
+# Fetch the next page of items
+agent-slack later list --cursor "<next_cursor>"
 
 # Save a message for later
 agent-slack later save "https://workspace.slack.com/archives/C123/p1700000000000000"

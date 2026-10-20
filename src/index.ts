@@ -1,6 +1,10 @@
 import { Command } from "commander";
 import { installProxyDispatcher } from "./lib/proxy.ts";
-import { getCommandTimeoutMs, startCommandWatchdog } from "./lib/command-watchdog.ts";
+import {
+  getCommandTimeoutMs,
+  shouldStartCommandWatchdog,
+  startCommandWatchdog,
+} from "./lib/command-watchdog.ts";
 import { getPackageVersion } from "./lib/version.ts";
 import { createCliContext } from "./cli/context.ts";
 import { registerAuthCommand } from "./cli/auth-command.ts";
@@ -19,17 +23,6 @@ import { backgroundUpdateCheck } from "./lib/update.ts";
 installProxyDispatcher();
 
 const program = new Command();
-
-function shouldStartCommandWatchdog(args: string[]): boolean {
-  const [command, subcommand] = args;
-  if (!command || command === "update") {
-    return false;
-  }
-  if (command === "message" && subcommand === "draft") {
-    return false;
-  }
-  return true;
-}
 
 function maybeStartCommandWatchdog(args: string[]): void {
   if (!shouldStartCommandWatchdog(args)) {

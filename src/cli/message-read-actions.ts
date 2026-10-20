@@ -14,6 +14,7 @@ import { getThreadSummary, toThreadListMessage } from "./message-thread-info.ts"
 import type { MessageCommandOptions } from "./message-actions.ts";
 import {
   parseLimit,
+  parseMaxChars,
   parseReactionFilters,
   requireOldestWhenReactionFiltersUsed,
 } from "./message-actions.ts";
@@ -35,6 +36,7 @@ export async function handleMessageGet(input: {
     );
   }
   const workspaceUrl = input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+  const maxBodyChars = parseMaxChars(input.options.maxBodyChars, "--max-body-chars");
 
   return input.ctx.withAutoRefresh({
     workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
@@ -46,7 +48,6 @@ export async function handleMessageGet(input: {
         const msg = await fetchMessage(client, { ref, includeReactions });
         const thread = await getThreadSummary(client, { channelId: ref.channel_id, msg });
         const downloadedPaths = await downloadMessageFiles({ auth, messages: [msg] });
-        const maxBodyChars = Number.parseInt(input.options.maxBodyChars, 10);
         const referencedUserIds = collectReferencedUserIds([msg], {
           includeReactions,
         });
@@ -96,7 +97,6 @@ export async function handleMessageGet(input: {
       const msg = await fetchMessage(client, { ref, includeReactions });
       const thread = await getThreadSummary(client, { channelId, msg });
       const downloadedPaths = await downloadMessageFiles({ auth, messages: [msg] });
-      const maxBodyChars = Number.parseInt(input.options.maxBodyChars, 10);
       const referencedUserIds = collectReferencedUserIds([msg], {
         includeReactions,
       });
@@ -135,6 +135,7 @@ export async function handleMessageList(input: {
     );
   }
   const workspaceUrl = input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+  const maxBodyChars = parseMaxChars(input.options.maxBodyChars, "--max-body-chars");
 
   return input.ctx.withAutoRefresh({
     workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
@@ -160,7 +161,6 @@ export async function handleMessageList(input: {
           includeReactions,
         });
         const downloadedPaths = await downloadMessageFiles({ auth, messages: threadMessages });
-        const maxBodyChars = Number.parseInt(input.options.maxBodyChars, 10);
         const referencedUserIds = collectReferencedUserIds(threadMessages, {
           includeReactions,
         });
@@ -216,7 +216,6 @@ export async function handleMessageList(input: {
           withoutReactions,
         });
         const downloadedPaths = await downloadMessageFiles({ auth, messages: channelMessages });
-        const maxBodyChars = Number.parseInt(input.options.maxBodyChars, 10);
         const referencedUserIds = collectReferencedUserIds(channelMessages, {
           includeReactions,
         });
@@ -268,7 +267,6 @@ export async function handleMessageList(input: {
         includeReactions,
       });
       const downloadedPaths = await downloadMessageFiles({ auth, messages: threadMessages });
-      const maxBodyChars = Number.parseInt(input.options.maxBodyChars, 10);
       const referencedUserIds = collectReferencedUserIds(threadMessages, {
         includeReactions,
       });

@@ -40,34 +40,52 @@ export async function fetchLaterItems(
   const maxBodyChars = options?.maxBodyChars ?? 4000;
   const countsOnly = options?.countsOnly ?? false;
 
+  const isWanted = (item: Record<string, unknown>): boolean =>
+    getString(item.item_type) === "message" &&
+    (stateFilter === "all" || getString(item.state) === stateFilter);
+
   let currentCursor = options?.cursor;
-  let allRawItems: Record<string, unknown>[] = [];
+  const filtered: Record<string, unknown>[] = [];
   let counts: Record<string, unknown> = {};
   let nextCursor: string | undefined;
 
-  while (true) {
+  for (let page = 0; ; page++) {
     const resp = await client.api("saved.list", {
       limit: 50,
       cursor: currentCursor,
     });
 
-    if (!currentCursor) {
+    // Counts come with the first page of this call, including a resumed --cursor call.
+    if (page === 0) {
       counts = isRecord(resp.counts) ? resp.counts : {};
     }
 
     const pageRawItems = asArray(resp.saved_items).filter(isRecord);
-    allRawItems.push(...pageRawItems);
-
-    const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
-    nextCursor = meta ? getString(meta.next_cursor) : undefined;
+    nextCursor = nextCursorOf(resp);
 
     if (countsOnly) {
       break;
     }
 
-    let filtered = allRawItems.filter((item) => getString(item.item_type) === "message");
-    if (stateFilter !== "all") {
-      filtered = filtered.filter((item) => getString(item.state) === stateFilter);
+    let consumed = pageRawItems.length;
+    for (const [index, item] of pageRawItems.entries()) {
+      if (!isWanted(item)) {
+        continue;
+      }
+      filtered.push(item);
+      if (filtered.length >= limit) {
+        consumed = index + 1;
+        break;
+      }
+    }
+    if (consumed < pageRawItems.length) {
+      // The page holds items past the limit. Re-request just the consumed part so
+      // next_cursor resumes right after the last returned item instead of skipping
+      // the rest of this page.
+      nextCursor = nextCursorOf(
+        await client.api("saved.list", { limit: consumed, cursor: currentCursor }),
+      );
+      break;
     }
 
     if (filtered.length >= limit || !nextCursor) {
@@ -90,15 +108,6 @@ export async function fetchLaterItems(
   if (countsOnly) {
     return result;
   }
-
-  // Filter to messages only, then by state
-  let filtered = allRawItems.filter((item) => getString(item.item_type) === "message");
-  if (stateFilter !== "all") {
-    filtered = filtered.filter((item) => getString(item.state) === stateFilter);
-  }
-
-  // Limit results
-  filtered = filtered.slice(0, limit);
 
   // Hydrate items in parallel
   result.items = await Promise.all(
@@ -306,6 +315,11 @@ function getNext9am(daysFromNow: number): number {
   date.setDate(date.getDate() + daysFromNow);
   date.setHours(9, 0, 0, 0);
   return Math.floor(date.getTime() / 1000);
+}
+
+function nextCursorOf(resp: Record<string, unknown>): string | undefined {
+  const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
+  return meta ? getString(meta.next_cursor) : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

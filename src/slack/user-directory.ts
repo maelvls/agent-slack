@@ -227,7 +227,8 @@ async function edgeCandidates(
         users.push(...(await edgeSearchUsers(client, { ...input, query: term })));
       }
     }
-    return users;
+    // A user found by several terms must count once, or matching reports them as ambiguous.
+    return Array.from(new Map(users.map((u) => [u.id, u])).values());
   } catch {
     return null;
   }

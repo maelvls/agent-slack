@@ -6,6 +6,7 @@ import { searchUsers } from "../slack/user-directory.ts";
 import { getDmChannelForUsers, getUser, listUsers, resolveUserId } from "../slack/users.ts";
 import { collectOrgChartUserIds, fetchOrgChart } from "../slack/org-chart.ts";
 import { resolveUsersById, toReferencedUsers } from "../slack/user-cache.ts";
+import { parseLimit } from "./message-actions.ts";
 
 export function registerUserCommand(input: { program: Command; ctx: CliContext }): void {
   const userCmd = input.program.command("user").description("Workspace user directory");
@@ -26,11 +27,11 @@ export function registerUserCommand(input: { program: Command; ctx: CliContext }
       ];
       try {
         const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
+        const limit = parseLimit(options.limit) ?? 200;
         const payload = await input.ctx.withAutoRefresh({
           workspaceUrl,
           work: async () => {
             const { client } = await input.ctx.getClientForWorkspace(workspaceUrl);
-            const limit = Number.parseInt(options.limit, 10);
             return await listUsers(client, {
               limit,
               cursor: options.cursor,
@@ -68,13 +69,14 @@ export function registerUserCommand(input: { program: Command; ctx: CliContext }
       ];
       try {
         const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
+        const limit = parseLimit(options.limit) ?? 20;
         const payload = await input.ctx.withAutoRefresh({
           workspaceUrl,
           work: async () => {
             const { client } = await input.ctx.getClientForWorkspace(workspaceUrl);
             return await searchUsers(client, {
               query,
-              limit: Number.parseInt(options.limit, 10),
+              limit,
               includeBots: Boolean(options.includeBots),
               refresh: Boolean(options.refresh),
             });

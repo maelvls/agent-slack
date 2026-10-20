@@ -11,6 +11,7 @@ import {
 import { pruneEmpty } from "../lib/compact-json.ts";
 import { parseMsgTarget } from "./targets.ts";
 import { resolveChannelId } from "../slack/channels.ts";
+import { parseLimit, parseMaxChars } from "./message-actions.ts";
 
 function resolveTargetRef(input: {
   targetInput: string;
@@ -74,6 +75,7 @@ export function registerLaterCommand(input: { program: Command; ctx: CliContext 
       "4000",
     )
     .option("--counts-only", "Only show counts per state, skip message content")
+    .option("--cursor <cursor>", "Resume from a previous next_cursor")
     .action(
       async (options: {
         workspace?: string;
@@ -81,10 +83,13 @@ export function registerLaterCommand(input: { program: Command; ctx: CliContext 
         limit?: string;
         maxBodyChars?: string;
         countsOnly?: boolean;
+        cursor?: string;
       }) => {
         try {
           const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
           const state = parseState(options.state ?? "in_progress");
+          const limit = parseLimit(options.limit ?? "20") ?? 20;
+          const maxBodyChars = parseMaxChars(options.maxBodyChars ?? "4000", "--max-body-chars");
 
           const payload = await input.ctx.withAutoRefresh({
             workspaceUrl,
@@ -92,9 +97,10 @@ export function registerLaterCommand(input: { program: Command; ctx: CliContext 
               const { client } = await input.ctx.getClientForWorkspace(workspaceUrl);
               return fetchLaterItems(client, {
                 state,
-                limit: Number.parseInt(options.limit ?? "20", 10),
-                maxBodyChars: Number.parseInt(options.maxBodyChars ?? "4000", 10),
+                limit,
+                maxBodyChars,
                 countsOnly: options.countsOnly,
+                cursor: options.cursor,
               });
             },
           });

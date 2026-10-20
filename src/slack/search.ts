@@ -40,6 +40,7 @@ export type SearchResult = {
   files?: SearchFile[];
   file_download_errors?: FileDownloadError[];
   referenced_users?: Record<string, CompactSlackUser>;
+  truncated_channels?: string[];
 };
 
 export async function searchSlack(input: {
@@ -84,6 +85,7 @@ export async function searchSlack(input: {
       });
       out.messages = messageResult.messages;
       out.referenced_users = messageResult.referenced_users;
+      out.truncated_channels = messageResult.truncated_channels;
     } else {
       const rawMatches = await searchMessagesRaw(input.client, { query: slackQuery, limit });
       const messageResult = await searchMessagesViaSearchApi(input.client, {

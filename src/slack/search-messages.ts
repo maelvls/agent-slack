@@ -9,6 +9,7 @@ import { parseSlackMessageUrl } from "./url.ts";
 import { inferExt } from "./search-file-ext.ts";
 import { dateToUnixSeconds, resolveUserId } from "./search-query.ts";
 import { asArray, getNumber, getString, isRecord } from "../lib/object-type-guards.ts";
+import { extendCommandWatchdog, getCommandTimeoutMs } from "../lib/command-watchdog.ts";
 import { slackMrkdwnToMarkdown } from "./mrkdwn.ts";
 import { collectReferencedUserIds, resolveUsersById, toReferencedUsers } from "./user-cache.ts";
 import type { CompactSlackUser } from "./users.ts";
@@ -17,6 +18,8 @@ export type ContentType = "any" | "text" | "image" | "snippet" | "file";
 export type SearchMessageResult = {
   messages: SearchCompactMessage[];
   referenced_users?: Record<string, CompactSlackUser>;
+  // Channels whose history scan hit the page cap before reaching --after (or the start).
+  truncated_channels?: string[];
 };
 
 export async function searchMessagesViaSearchApi(
@@ -142,6 +145,9 @@ export async function searchMessagesViaSearchApi(
   };
 }
 
+// Bounds a channel-scoped scan to 2000 messages per channel (200 per page).
+const MAX_HISTORY_PAGES_PER_CHANNEL = 10;
+
 export async function searchMessagesInChannelsFallback(
   client: SlackApiClient,
   input: {
@@ -173,20 +179,41 @@ export async function searchMessagesInChannelsFallback(
   const matchedSummaries: SlackMessageSummary[] = [];
 
   const results: SearchCompactMessage[] = [];
+  const truncatedChannels: string[] = [];
+  const truncation = (): Pick<SearchMessageResult, "truncated_channels"> =>
+    truncatedChannels.length > 0 ? { truncated_channels: truncatedChannels } : {};
+  // Let Slack skip history outside --after/--before instead of paging through it.
+  const historyBounds =
+    afterSec !== null || beforeSec !== null
+      ? {
+          oldest: afterSec !== null ? String(afterSec) : undefined,
+          latest: beforeSec !== null ? String(beforeSec) : undefined,
+          inclusive: true,
+        }
+      : {};
 
   for (const channelId of channelIds) {
-    let cursorLatest: string | undefined;
-    for (;;) {
+    let cursor: string | undefined;
+    for (let page = 0; ; page++) {
+      if (page === MAX_HISTORY_PAGES_PER_CHANNEL) {
+        truncatedChannels.push(channelId);
+        break;
+      }
+      // Each page is a bounded call that shows progress; don't let a long scan
+      // across several pages or channels be mistaken for a hang.
+      extendCommandWatchdog(getCommandTimeoutMs());
       const resp = await client.api("conversations.history", {
         channel: channelId,
         limit: 200,
-        latest: cursorLatest,
+        cursor,
+        ...historyBounds,
       });
       const messages = isRecord(resp) ? asArray(resp.messages).filter(isRecord) : [];
       if (messages.length === 0) {
         break;
       }
 
+      let reachedAfter = false;
       for (const m of messages) {
         const summary = messageSummaryFromApiMessage(channelId, m);
 
@@ -196,7 +223,7 @@ export async function searchMessagesInChannelsFallback(
             continue;
           }
           if (afterSec !== null && tsNum < afterSec) {
-            cursorLatest = undefined;
+            reachedAfter = true;
             break;
           }
         }
@@ -242,17 +269,14 @@ export async function searchMessagesInChannelsFallback(
           return {
             messages: results,
             referenced_users: toReferencedUsers(referencedUserIds, usersById),
+            ...truncation(),
           };
         }
       }
 
-      if (!cursorLatest) {
-        break;
-      }
-
-      const last = messages.at(-1);
-      cursorLatest = last ? getString(last.ts) : undefined;
-      if (!cursorLatest) {
+      const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
+      cursor = meta ? getString(meta.next_cursor) : undefined;
+      if (reachedAfter || !cursor) {
         break;
       }
     }
@@ -273,6 +297,7 @@ export async function searchMessagesInChannelsFallback(
   return {
     messages: results,
     referenced_users: toReferencedUsers(referencedUserIds, usersById),
+    ...truncation(),
   };
 }
 

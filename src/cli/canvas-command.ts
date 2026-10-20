@@ -12,6 +12,7 @@ import {
 import { pruneEmpty } from "../lib/compact-json.ts";
 import { resolveChannelId } from "../slack/channels.ts";
 import { readFile } from "node:fs/promises";
+import { parseMaxChars } from "./message-actions.ts";
 
 type CanvasCreateOptions = {
   file?: string;
@@ -152,13 +153,13 @@ export function registerCanvasCommand(input: { program: Command; ctx: CliContext
       try {
         const target = resolveCanvasTarget(value, options.workspace);
         const { workspaceUrl } = target;
+        const maxChars = parseMaxChars(options.maxChars, "--max-chars");
 
         const payload = await input.ctx.withAutoRefresh({
           workspaceUrl,
           work: async () => {
             const { client, auth, workspace_url } =
               await input.ctx.getClientForWorkspace(workspaceUrl);
-            const maxChars = Number.parseInt(options.maxChars, 10);
             return await fetchCanvasMarkdown(client, {
               auth,
               workspaceUrl: workspace_url ?? workspaceUrl ?? "",

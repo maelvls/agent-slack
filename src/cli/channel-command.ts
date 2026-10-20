@@ -181,6 +181,7 @@ export function registerChannelCommand(input: { program: Command; ctx: CliContex
           throw new Error('No users provided. Pass --users "U01234567,@alice,bob@example.com"');
         }
 
+        let nothingResolved = false;
         const payload = await input.ctx.withAutoRefresh({
           workspaceUrl,
           work: async () => {
@@ -220,6 +221,10 @@ export function registerChannelCommand(input: { program: Command; ctx: CliContex
               }
               resolvedUserIds.push(userId);
             }
+            if (resolvedUserIds.length === 0) {
+              nothingResolved = true;
+              return { channel_id: channelId, unresolved_users: unresolvedUsers };
+            }
 
             const inviteResult = await inviteUsersToChannel(client, {
               channelId,
@@ -234,6 +239,12 @@ export function registerChannelCommand(input: { program: Command; ctx: CliContex
           },
         });
         console.log(JSON.stringify(pruneEmpty(payload), null, 2));
+        if (nothingResolved) {
+          console.error(
+            `Error: none of the --users entries resolved to a Slack user: ${userInputs.join(", ")}`,
+          );
+          process.exitCode = 1;
+        }
       } catch (err: unknown) {
         console.error(input.ctx.errorMessage(err));
         process.exitCode = 1;

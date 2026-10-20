@@ -36,8 +36,29 @@ function arm(timeoutMs: number): void {
   (timer as { unref?: () => void }).unref?.();
 }
 
+/**
+ * The watchdog is skipped when there is no command (help output) and for
+ * `update`. Leading global options (e.g. `--safe-mode`) are skipped to find
+ * the command.
+ */
+export function shouldStartCommandWatchdog(args: string[]): boolean {
+  const command = args.find((arg) => !arg.startsWith("-"));
+  return Boolean(command) && command !== "update";
+}
+
 export function startCommandWatchdog(timeoutMs: number): void {
   arm(timeoutMs);
+}
+
+/**
+ * Disarm the watchdog for the rest of the process. Used while waiting on a
+ * human (e.g. the browser draft editor), which can legitimately take minutes.
+ */
+export function stopCommandWatchdog(): void {
+  if (timer) {
+    clearTimeout(timer);
+    timer = undefined;
+  }
 }
 
 /**

@@ -262,7 +262,7 @@ export function registerMessageCommand(input: { program: Command; ctx: CliContex
     .option("--text <text>", "Message text; alternative to the positional [text]")
     .option(
       "--thread-ts <ts>",
-      "Thread root ts for channel targets; URL targets derive their thread context",
+      "Thread root ts for channel and user (DM) targets; URL targets derive their thread context",
     )
     .option(
       "--reply-broadcast",
@@ -406,6 +406,7 @@ export function registerMessageCommand(input: { program: Command; ctx: CliContex
           ctx: input.ctx,
           targetInput,
           initialText: text,
+          safeMode: safeModeActive(),
           options,
         });
         console.log(JSON.stringify(payload, null, 2));

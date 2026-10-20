@@ -10,8 +10,15 @@ export async function composeMessage(input: {
   ctx: CliContext;
   targetInput: string;
   initialText?: string;
+  safeMode?: boolean;
   options: { workspace?: string; threadTs?: string; unfurl?: boolean };
 }): Promise<Record<string, unknown>> {
+  // CI skips the editor and posts directly, which would bypass human review.
+  if (input.safeMode && process.env.CI) {
+    throw new Error(
+      'Safe mode is active but the interactive draft editor is unavailable in CI, so "message compose" cannot keep a human in the loop. Disable safe mode (or unset CI) to send messages.',
+    );
+  }
   const target = parseMsgTarget(String(input.targetInput));
   if (target.kind === "user") {
     throw new Error(

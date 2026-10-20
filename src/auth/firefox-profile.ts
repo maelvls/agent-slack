@@ -144,8 +144,9 @@ export function parseProfilesIni(raw: string, baseDir: string): ProfileCandidate
     });
 }
 
-export async function listProfileCandidates(): Promise<ProfileCandidate[]> {
-  const baseDir = getFirefoxBaseDir();
+export async function listProfileCandidates(
+  baseDir = getFirefoxBaseDir(),
+): Promise<ProfileCandidate[]> {
   const iniPath = join(baseDir, "profiles.ini");
   const candidates: ProfileCandidate[] = [];
 
@@ -155,7 +156,7 @@ export async function listProfileCandidates(): Promise<ProfileCandidate[]> {
   }
 
   // profiles.ini can be stale, so also scan profile directories as a fallback source.
-  const dirName = IS_MACOS ? "Profiles" : baseDir;
+  const dirName = IS_MACOS ? join(baseDir, "Profiles") : baseDir;
   if (existsSync(dirName)) {
     const entries = await readdir(dirName, { withFileTypes: true });
     for (const entry of entries) {

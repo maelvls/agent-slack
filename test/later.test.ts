@@ -8,6 +8,9 @@ import {
   parseReminderDuration,
 } from "../src/slack/later.ts";
 import type { SlackApiClient } from "../src/slack/client.ts";
+import { Command } from "commander";
+import type { CliContext } from "../src/cli/context.ts";
+import { registerLaterCommand } from "../src/cli/later-command.ts";
 
 function createClient(responses: Record<string, Record<string, unknown>>) {
   const calls: { method: string; params: Record<string, unknown>; multipart?: boolean }[] = [];
@@ -287,6 +290,39 @@ describe("fetchLaterItems", () => {
 
     expect(result.items[0]?.message?.content?.length).toBeLessThanOrEqual(103); // 100 + "\n…"
   });
+
+  test("next_cursor resumes right after the last returned item", async () => {
+    // saved.list pages by position: the cursor is the offset of the next item.
+    const saved = ["1.1", "2.2", "3.3", "4.4", "5.5"].map((ts) => ({
+      item_id: "C123",
+      item_type: "message",
+      ts,
+      state: "in_progress",
+      date_created: 100,
+    }));
+    const client = {
+      api: async (method: string, params: Record<string, unknown> = {}) => {
+        if (method !== "saved.list") {
+          return { ok: true };
+        }
+        const start = Number(params.cursor ?? 0);
+        const end = Math.min(start + Number(params.limit), saved.length);
+        return {
+          ok: true,
+          saved_items: saved.slice(start, end),
+          counts: { uncompleted_count: saved.length, total_count: saved.length },
+          response_metadata: { next_cursor: end < saved.length ? String(end) : "" },
+        };
+      },
+    } as unknown as SlackApiClient;
+
+    const first = await fetchLaterItems(client, { limit: 2 });
+    const second = await fetchLaterItems(client, { limit: 2, cursor: first.next_cursor });
+
+    expect(first.items.map((i) => i.ts)).toEqual(["1.1", "2.2"]);
+    expect(second.items.map((i) => i.ts)).toEqual(["3.3", "4.4"]);
+    expect(second.counts.total).toBe(5);
+  });
 });
 
 describe("updateLaterMark", () => {
@@ -451,5 +487,30 @@ describe("parseReminderDuration", () => {
     expect(() => parseReminderDuration("banana")).toThrow("Invalid duration");
     expect(() => parseReminderDuration("")).toThrow("Invalid duration");
     expect(() => parseReminderDuration("abc123")).toThrow("Invalid duration");
+  });
+});
+
+describe("later list command", () => {
+  test("--cursor resumes saved.list from a previous next_cursor", async () => {
+    const { client, calls } = createClient({
+      "saved.list": { ok: true, saved_items: [], counts: { total_count: 0 } },
+    });
+    const ctx = {
+      effectiveWorkspaceUrl: (flag?: string) => flag,
+      withAutoRefresh: async <T>(input: { work: () => Promise<T> }) => input.work(),
+      getClientForWorkspace: async () => ({ client }),
+      errorMessage: (err: unknown) => String(err),
+    } as unknown as CliContext;
+    const program = new Command();
+    registerLaterCommand({ program, ctx });
+    const originalLog = console.log;
+    console.log = () => {};
+    try {
+      await program.parseAsync(["later", "list", "--cursor", "page-2"], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(calls[0]).toEqual({ method: "saved.list", params: { limit: 50, cursor: "page-2" } });
   });
 });

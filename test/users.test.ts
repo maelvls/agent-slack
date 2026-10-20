@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveUserId } from "../src/slack/users.ts";
+import { listUsers, resolveUserId } from "../src/slack/users.ts";
 
 describe("resolveUserId", () => {
   test("returns user ids unchanged", async () => {
@@ -73,5 +73,33 @@ describe("resolveUserId", () => {
       },
     };
     expect(await resolveUserId(client as never, "alice@example.com")).toBe("U04FALLBACK");
+  });
+});
+
+describe("listUsers", () => {
+  test("clears next_cursor after the last page", async () => {
+    const pages: Record<string, Record<string, unknown>> = {
+      start: {
+        members: [{ id: "U1", name: "a" }],
+        response_metadata: { next_cursor: "page-2" },
+      },
+      "page-2": {
+        members: [{ id: "U2", name: "b" }],
+        response_metadata: { next_cursor: "" },
+      },
+    };
+    const client = {
+      api: async (method: string, params: Record<string, unknown>) => {
+        if (method === "conversations.list") {
+          return { channels: [] };
+        }
+        return pages[String(params.cursor ?? "start")];
+      },
+    };
+
+    const result = await listUsers(client as never, { limit: 10 });
+
+    expect(result.users.map((u) => u.id)).toEqual(["U1", "U2"]);
+    expect(result.next_cursor).toBeUndefined();
   });
 });

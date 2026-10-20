@@ -295,6 +295,11 @@ describe("getUser by full name", () => {
     expect(message).toContain('agent-slack user search "Jane Doe"');
   });
 
+  test("counts a user found by several per-term searches once", async () => {
+    const { client } = edgeClient((query) => (query === "jane engineer" ? [] : [janeA]));
+    expect((await getUser(client, "jane engineer")).id).toBe("U3");
+  });
+
   test("fails with a not-found error suggesting user search", async () => {
     const { client } = edgeClient([]);
     await expect(getUser(client, "No Body")).rejects.toThrow(

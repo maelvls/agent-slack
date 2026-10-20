@@ -45,7 +45,7 @@ describe("agent-facing help contracts", () => {
     expect(optionDescription(send, "--attach")).toContain("without automatic list conversion");
     expect(optionDescription(send, "--schedule")).toContain("within 120 days");
     expect(optionDescription(send, "--schedule-in")).toContain("local timezone");
-    expect(optionDescription(send, "--thread-ts")).toContain("channel targets");
+    expect(optionDescription(send, "--thread-ts")).toContain("channel and user (DM) targets");
     expect(optionDescription(send, "--reply-broadcast")).toContain("DM targets");
     expect(optionDescription(send, "--no-unfurl")).toContain("link and media previews");
   });

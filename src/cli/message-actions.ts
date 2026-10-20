@@ -53,13 +53,24 @@ export type MessageCommandOptions = {
   refreshUsers?: boolean;
 };
 
-export function parseLimit(raw: string | undefined): number | undefined {
+export function parseLimit(raw: string | undefined, flag = "--limit"): number | undefined {
   if (raw === undefined) {
     return undefined;
   }
   const n = Number.parseInt(raw, 10);
   if (!Number.isFinite(n) || n < 1) {
-    throw new Error(`Invalid --limit value "${raw}": must be a positive integer`);
+    throw new Error(`Invalid ${flag} value "${raw}": must be a positive integer`);
+  }
+  return n;
+}
+
+/** Parses a --max-*-chars option: a non-negative integer, or -1 for unlimited. */
+export function parseMaxChars(raw: string, flag: string): number {
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < -1) {
+    throw new Error(
+      `Invalid ${flag} value "${raw}": must be a non-negative integer, or -1 for unlimited`,
+    );
   }
   return n;
 }
@@ -183,6 +194,7 @@ export async function sendMessage(input: {
           channelId: dmChannelId,
           text: formattedText,
           blocks,
+          threadTs: input.options.threadTs ? String(input.options.threadTs) : undefined,
           attachPaths,
           postAt,
           unfurl: input.options.unfurl,

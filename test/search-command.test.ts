@@ -179,4 +179,26 @@ describe("search referenced users", () => {
 
     expect(calls.filter((call) => call.method === "users.info").length).toBe(2);
   });
+
+  test("rejects a non-numeric --max-content-chars before calling Slack", async () => {
+    const calls: ApiCall[] = [];
+    const ctx = createContext(calls);
+    const program = new Command();
+    registerSearchCommand({ program, ctx });
+    const originalError = console.error;
+    const err = mock((_line: string) => {});
+    console.error = err as typeof console.error;
+    try {
+      await program.parseAsync(["search", "messages", "hello", "--max-content-chars", "abc"], {
+        from: "user",
+      });
+    } finally {
+      console.error = originalError;
+    }
+
+    expect(calls).toEqual([]);
+    expect(err.mock.calls[0]?.[0]).toContain('Invalid --max-content-chars value "abc"');
+    expect(process.exitCode).toBe(1);
+    process.exitCode = 0;
+  });
 });

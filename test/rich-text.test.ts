@@ -27,6 +27,30 @@ describe("parseInlineElements", () => {
     ]);
   });
 
+  test.each([
+    "my_var_name",
+    "see https://example.com/a_b_c",
+    "see https://example.com/_x_/*y*/~z~ now",
+    "2 * 3 * 4",
+    "a~b~c and x*y*z",
+    "_ spaced _ and ~ spaced ~",
+  ])("leaves markers inside words, URLs, or around spaces literal: %p", (text) => {
+    expect(parseInlineElements(text)).toEqual([{ type: "text", text }]);
+  });
+
+  test("styles markers at word boundaries next to punctuation", () => {
+    expect(parseInlineElements("(*bold*), _it_. ~gone~; https://x.com/a_b *after*")).toEqual([
+      { type: "text", text: "(" },
+      { type: "text", text: "bold", style: { bold: true } },
+      { type: "text", text: "), " },
+      { type: "text", text: "it", style: { italic: true } },
+      { type: "text", text: ". " },
+      { type: "text", text: "gone", style: { strike: true } },
+      { type: "text", text: "; https://x.com/a_b " },
+      { type: "text", text: "after", style: { bold: true } },
+    ]);
+  });
+
   test("`code` is parsed with code style", () => {
     expect(parseInlineElements("Run `npm install`")).toEqual([
       { type: "text", text: "Run " },

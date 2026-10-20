@@ -37,6 +37,13 @@ function getSlackRateLimitMaxWaitMs(): number {
   return Math.floor(parsed);
 }
 
+// Missing or non-numeric (e.g. HTTP-date) Retry-After falls back to 5s rather than NaN,
+// which would slip past the max-wait check and retry immediately.
+function parseRetryAfterSec(header: string | null): number {
+  const parsed = Number(header ?? "");
+  return header?.trim() && Number.isFinite(parsed) ? parsed : 5;
+}
+
 function slackApiTimeoutError(method: string, timeoutMs: number): Error {
   return new Error(
     `Slack API call ${method} timed out after ${timeoutMs}ms. Set AGENT_SLACK_API_TIMEOUT_MS to adjust.`,
@@ -248,13 +255,12 @@ export class SlackApiClient {
     }
 
     if (response.status === 429 && attempt < 3) {
-      const retryAfter = Number(response.headers.get("Retry-After") ?? "5");
-      const requestedWaitMs = Math.max(retryAfter, 1) * 1000;
+      const retryAfter = parseRetryAfterSec(response.headers.get("Retry-After"));
+      const delayMs = Math.max(retryAfter, 1) * 1000;
       const maxWaitMs = getSlackRateLimitMaxWaitMs();
-      if (requestedWaitMs > maxWaitMs) {
+      if (delayMs > maxWaitMs) {
         throw slackRateLimitError({ method: input.method, retryAfterSec: retryAfter, maxWaitMs });
       }
-      const delayMs = Math.min(requestedWaitMs, 30000);
       logRateLimitRetry({ method: input.method, retryAfterSec: retryAfter, delayMs });
       // The command watchdog doesn't know this wait is intentional; push its deadline
       // out so it doesn't kill the process mid-retry.
@@ -344,13 +350,12 @@ export class SlackApiClient {
     }
 
     if (response.status === 429 && attempt < 3) {
-      const retryAfter = Number(response.headers.get("Retry-After") ?? "5");
-      const requestedWaitMs = Math.max(retryAfter, 1) * 1000;
+      const retryAfter = parseRetryAfterSec(response.headers.get("Retry-After"));
+      const delayMs = Math.max(retryAfter, 1) * 1000;
       const maxWaitMs = getSlackRateLimitMaxWaitMs();
-      if (requestedWaitMs > maxWaitMs) {
+      if (delayMs > maxWaitMs) {
         throw slackRateLimitError({ method: input.method, retryAfterSec: retryAfter, maxWaitMs });
       }
-      const delayMs = Math.min(requestedWaitMs, 30000);
       logRateLimitRetry({ method: input.method, retryAfterSec: retryAfter, delayMs });
       // The command watchdog doesn't know this wait is intentional; push its deadline
       // out so it doesn't kill the process mid-retry.

@@ -3,6 +3,7 @@ import type { CliContext } from "./context.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
 import { searchSlack } from "../slack/search.ts";
 import { addHiddenOptionAlias } from "./options.ts";
+import { parseLimit, parseMaxChars } from "./message-actions.ts";
 
 type SearchCommandOptions = {
   workspace?: string;
@@ -58,14 +59,18 @@ async function runSearch(input: {
       ? [input.options.channel]
       : [];
 
+  const limit = parseLimit(input.options.limit || "20") ?? 20;
+  const maxContentChars = parseMaxChars(
+    input.options.maxContentChars || "4000",
+    "--max-content-chars",
+  );
+
   await input.ctx.assertWorkspaceSpecifiedForChannelNames({ workspaceUrl, channels });
 
   const payload = await input.ctx.withAutoRefresh({
     workspaceUrl,
     work: async () => {
       const { client, auth, workspace_url } = await input.ctx.getClientForWorkspace(workspaceUrl);
-      const limit = Number.parseInt(input.options.limit || "20", 10);
-      const maxContentChars = Number.parseInt(input.options.maxContentChars || "4000", 10);
       const contentType = input.ctx.parseContentType(input.options.contentType);
       return await searchSlack({
         client,

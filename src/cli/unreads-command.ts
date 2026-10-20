@@ -2,6 +2,7 @@ import type { Command } from "commander";
 import type { CliContext } from "./context.ts";
 import { fetchUnreads } from "../slack/unreads.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
+import { parseLimit, parseMaxChars } from "./message-actions.ts";
 
 export function registerUnreadsCommand(input: { program: Command; ctx: CliContext }): void {
   input.program
@@ -26,6 +27,9 @@ export function registerUnreadsCommand(input: { program: Command; ctx: CliContex
       }) => {
         try {
           const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
+          const maxMessagesPerChannel =
+            parseLimit(options.maxMessages ?? "10", "--max-messages") ?? 10;
+          const maxBodyChars = parseMaxChars(options.maxBodyChars ?? "4000", "--max-body-chars");
 
           const payload = await input.ctx.withAutoRefresh({
             workspaceUrl,
@@ -33,8 +37,8 @@ export function registerUnreadsCommand(input: { program: Command; ctx: CliContex
               const { client } = await input.ctx.getClientForWorkspace(workspaceUrl);
               return fetchUnreads(client, {
                 includeMessages: !options.countsOnly,
-                maxMessagesPerChannel: Number.parseInt(options.maxMessages ?? "10", 10),
-                maxBodyChars: Number.parseInt(options.maxBodyChars ?? "4000", 10),
+                maxMessagesPerChannel,
+                maxBodyChars,
                 skipSystemMessages: !options.includeSystem,
               });
             },

@@ -1,5 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import { execFile } from "node:child_process";
+import { randomBytes, timingSafeEqual } from "node:crypto";
+import { stopCommandWatchdog } from "../lib/command-watchdog.ts";
 // @ts-ignore — import attributes need module:"esnext" in tsconfig; Bun handles this fine
 import _editorHtmlContent from "./draft-editor.html" with { type: "text" };
 
@@ -10,17 +12,38 @@ export type DraftEditorConfig = {
   threadTs?: string;
   initialText?: string;
   onSend: (mrkdwn: string) => Promise<{ ts: string }>;
+  openBrowser?: (url: string) => void;
 };
 
 export type DraftResult = { sent: true; text: string } | { cancelled: true };
 
 export function openDraftEditor(config: DraftEditorConfig): Promise<DraftResult> {
+  // A human is editing now; the editor has its own idle timeout below.
+  stopCommandWatchdog();
+  // Required on every POST so that only the page we served can send or cancel:
+  // a custom header forces a CORS preflight, which this server never approves.
+  const token = randomBytes(32).toString("hex");
+
   return new Promise<DraftResult>((resolve, reject) => {
     let settled = false;
+    let port = 0;
 
     const server: Server = createServer(async (req, res) => {
+      // Rejects DNS-rebinding requests, which reach us with a foreign Host.
+      if (!isLocalRequest(req, port)) {
+        res.writeHead(403);
+        res.end("Forbidden");
+        return;
+      }
+
+      if (req.method === "POST" && !isAuthorizedPost(req, token)) {
+        res.writeHead(403, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: "forbidden" }));
+        return;
+      }
+
       if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
-        const html = buildEditorHtml(config);
+        const html = buildEditorHtml(config, token);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(html);
         return;
@@ -90,15 +113,36 @@ export function openDraftEditor(config: DraftEditorConfig): Promise<DraftResult>
 
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
-      const port = typeof addr === "object" && addr ? addr.port : 0;
+      port = typeof addr === "object" && addr ? addr.port : 0;
       const url = `http://127.0.0.1:${port}`;
       process.stderr.write(`Draft editor: ${url}\n`);
-      openBrowser(url);
+      (config.openBrowser ?? openBrowser)(url);
     });
   });
 }
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
+
+function isLocalRequest(req: IncomingMessage, port: number): boolean {
+  const allowed = [`127.0.0.1:${port}`, `localhost:${port}`];
+  if (!allowed.includes(req.headers.host ?? "")) {
+    return false;
+  }
+  const { origin } = req.headers;
+  return origin === undefined || allowed.some((host) => origin === `http://${host}`);
+}
+
+function isAuthorizedPost(req: IncomingMessage, token: string): boolean {
+  const contentType = (req.headers["content-type"] ?? "").split(";")[0]?.trim().toLowerCase();
+  if (contentType !== "application/json") {
+    return false;
+  }
+  const provided = req.headers["x-draft-token"];
+  if (typeof provided !== "string" || provided.length !== token.length) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(token));
+}
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -148,7 +192,7 @@ function extractWorkspaceName(url?: string): string | null {
   }
 }
 
-function buildEditorHtml(config: DraftEditorConfig): string {
+function buildEditorHtml(config: DraftEditorConfig, token: string): string {
   const threadUrl = buildSlackThreadUrl(config);
   const workspaceName = extractWorkspaceName(config.workspaceUrl);
   const injectedConfig = JSON.stringify({
@@ -159,6 +203,7 @@ function buildEditorHtml(config: DraftEditorConfig): string {
     threadTs: config.threadTs || null,
     threadUrl,
     initialText: config.initialText || "",
+    token,
   });
 
   // JSON.stringify handles quotes/backslashes; escape < and > to prevent

@@ -54,11 +54,11 @@ export async function listUsers(
         }
         const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
         const next = meta ? getString(meta.next_cursor) : undefined;
+        next_cursor = next || undefined;
         if (!next) {
           break;
         }
         cursor = next;
-        next_cursor = next;
       }
       return users;
     })(),

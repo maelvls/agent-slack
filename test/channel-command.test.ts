@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { Command } from "commander";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { CliContext } from "../src/cli/context.ts";
 import { registerChannelCommand } from "../src/cli/channel-command.ts";
 
@@ -318,6 +321,76 @@ describe("channel mark command", () => {
     const markCall = calls.find((c) => c.method === "conversations.mark");
     expect(markCall).toBeDefined();
     expect(markCall?.params.ts).toBe("1234567890.123456");
+    expect(process.exitCode).toBe(0);
+  });
+});
+
+describe("channel invite command", () => {
+  const originalLog = console.log;
+  const originalError = console.error;
+  const originalXdg = process.env.XDG_RUNTIME_DIR;
+  let appDir = "";
+
+  beforeEach(async () => {
+    process.exitCode = 0;
+    // Name resolution falls back to caching the user directory; keep it out of the real app dir.
+    appDir = await mkdtemp(join(tmpdir(), "agent-slack-channel-invite-"));
+    process.env.XDG_RUNTIME_DIR = appDir;
+  });
+
+  afterEach(async () => {
+    process.exitCode = 0;
+    console.log = originalLog;
+    console.error = originalError;
+    if (originalXdg === undefined) {
+      delete process.env.XDG_RUNTIME_DIR;
+    } else {
+      process.env.XDG_RUNTIME_DIR = originalXdg;
+    }
+    await rm(appDir, { recursive: true, force: true });
+  });
+
+  test("fails without inviting when no --users entry resolves", async () => {
+    const { ctx, calls } = createContext();
+    const program = new Command();
+    registerChannelCommand({ program, ctx });
+    const log = mock((_line: string) => {});
+    console.log = log as typeof console.log;
+    const err = mock((_line: string) => {});
+    console.error = err as typeof console.error;
+
+    await program.parseAsync(
+      ["channel", "invite", "--channel", "C12345678", "--users", "@nobody,@ghost"],
+      { from: "user" },
+    );
+
+    expect(calls.some((c) => c.method === "conversations.invite")).toBe(false);
+    expect(JSON.parse(log.mock.calls[0]?.[0] ?? "{}")).toEqual({
+      channel_id: "C12345678",
+      unresolved_users: ["@nobody", "@ghost"],
+    });
+    expect(err.mock.calls.at(-1)?.[0]).toContain("@nobody, @ghost");
+    expect(process.exitCode).toBe(1);
+  });
+
+  test("invites resolved users and still reports unresolved ones", async () => {
+    const { ctx, calls } = createContext();
+    const program = new Command();
+    registerChannelCommand({ program, ctx });
+    const log = mock((_line: string) => {});
+    console.log = log as typeof console.log;
+
+    await program.parseAsync(
+      ["channel", "invite", "--channel", "C12345678", "--users", "@alice,@ghost"],
+      { from: "user" },
+    );
+
+    const invite = calls.find((c) => c.method === "conversations.invite");
+    expect(invite?.params).toEqual({ channel: "C12345678", users: "U123" });
+    expect(JSON.parse(log.mock.calls[0]?.[0] ?? "{}")).toMatchObject({
+      invited_user_ids: ["U123"],
+      unresolved_users: ["@ghost"],
+    });
     expect(process.exitCode).toBe(0);
   });
 });

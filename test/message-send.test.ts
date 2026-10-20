@@ -188,6 +188,27 @@ describe("sendMessage", () => {
     ]);
   });
 
+  test("replies in the DM thread when a user target has --thread-ts", async () => {
+    const calls: { method: string; params: Record<string, unknown> }[] = [];
+    const ctx = createContext(calls);
+
+    await sendMessage({
+      ctx,
+      targetInput: "U12345678",
+      text: "hello",
+      options: { threadTs: "1770160000.000001" },
+    });
+
+    expect(calls.at(-1)).toEqual({
+      method: "chat.postMessage",
+      params: {
+        channel: "D12345678",
+        text: "hello",
+        thread_ts: "1770160000.000001",
+      },
+    });
+  });
+
   test("returns a permalink when the workspace was resolved implicitly", async () => {
     const calls: { method: string; params: Record<string, unknown> }[] = [];
     const ctx = createContext(calls);
@@ -743,6 +764,25 @@ describe("sendMessage", () => {
 });
 
 describe("composeMessage", () => {
+  test("refuses in CI under safe mode instead of posting without review", async () => {
+    await withEnvironment({ CI: "1" }, async () => {
+      const calls: { method: string; params: Record<string, unknown> }[] = [];
+      const ctx = createContext(calls);
+
+      await expect(
+        composeMessage({
+          ctx,
+          targetInput: "#general",
+          initialText: "unreviewed",
+          safeMode: true,
+          options: {},
+        }),
+      ).rejects.toThrow("unavailable in CI");
+
+      expect(calls).toHaveLength(0);
+    });
+  });
+
   test("--no-unfurl disables link and media previews when CI sends immediately", async () => {
     await withEnvironment({ CI: "1" }, async () => {
       const calls: { method: string; params: Record<string, unknown> }[] = [];

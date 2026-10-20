@@ -43,12 +43,14 @@ const BLOCKQUOTE_RE = /^> (.*)$/;
  * Parse mrkdwn inline formatting into Slack rich_text inline elements.
  *
  * Handles: *bold*, _italic_, ~strike~, `code`, :emoji:, <url|label>, <url>,
- * and CommonMark [label](url) links
+ * and CommonMark [label](url) links. Like Slack mrkdwn, style markers only
+ * count at word boundaries with no whitespace just inside them, so my_var_name
+ * and 2 * 3 * 4 stay literal, as do markers inside bare URLs.
  */
 export function parseInlineElements(text: string): InlineElement[] {
   const elements: InlineElement[] = [];
   const re =
-    /`([^`]+)`|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)(?:\([^\s()]*\)|[^\s()])*)\)|(?:^|(?<=[^A-Za-z0-9_])):([a-zA-Z0-9_+-]+):(?![A-Za-z0-9_+-])|\*([^*]+)\*|_([^_]+)_|~([^~]+)~|<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>|<#([CG][A-Z0-9]+)(?:\|[^>]*)?>|<!subteam\^([A-Z0-9]+)(?:\|[^>]*)?>|<!(here|channel|everyone)(?:\|[^>]*)?>|<([^>|]+)\|([^>]+)>|<([^>|]+)>|(?:^|(?<=[^A-Za-z0-9_]))@([UWB][A-Z0-9]{6,})\b|(?:^|(?<=[^A-Za-z0-9_]))@(here|channel|everyone)\b/g;
+    /`([^`]+)`|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)(?:\([^\s()]*\)|[^\s()])*)\)|(?:^|(?<=[^A-Za-z0-9_])):([a-zA-Z0-9_+-]+):(?![A-Za-z0-9_+-])|(https?:\/\/[^\s<>]+)|(?:^|(?<=[^A-Za-z0-9_]))\*(?!\s)([^*]+)(?<!\s)\*(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))_(?!\s)([^_]+)(?<!\s)_(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))~(?!\s)([^~]+)(?<!\s)~(?![A-Za-z0-9_])|<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>|<#([CG][A-Z0-9]+)(?:\|[^>]*)?>|<!subteam\^([A-Z0-9]+)(?:\|[^>]*)?>|<!(here|channel|everyone)(?:\|[^>]*)?>|<([^>|]+)\|([^>]+)>|<([^>|]+)>|(?:^|(?<=[^A-Za-z0-9_]))@([UWB][A-Z0-9]{6,})\b|(?:^|(?<=[^A-Za-z0-9_]))@(here|channel|everyone)\b/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -59,16 +61,13 @@ export function parseInlineElements(text: string): InlineElement[] {
   };
 
   while ((match = re.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      pushText(text.slice(lastIndex, match.index));
-    }
-
     const [
       ,
       code,
       mdLinkText,
       mdLinkUrl,
       emojiName,
+      plainUrl,
       bold,
       italic,
       strike,
@@ -82,6 +81,15 @@ export function parseInlineElements(text: string): InlineElement[] {
       bareUserId,
       bareBroadcast,
     ] = match;
+    if (plainUrl != null) {
+      // Matched only so markers inside a URL (e.g. a_b_c) stay literal; it remains
+      // part of the surrounding text.
+      continue;
+    }
+    if (match.index > lastIndex) {
+      pushText(text.slice(lastIndex, match.index));
+    }
+
     if (code != null) {
       elements.push({ type: "text", text: code, style: { code: true } });
     } else if (mdLinkText != null && mdLinkUrl != null) {

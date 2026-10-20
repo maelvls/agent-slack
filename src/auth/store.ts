@@ -16,6 +16,17 @@ function isPlaceholderSecret(value: string | undefined): boolean {
   return !value || value === KEYCHAIN_PLACEHOLDER;
 }
 
+// The keychain holds a single xoxd shared by all browser workspaces (one keychain
+// prompt). A workspace whose cookie differs, e.g. imported from another browser,
+// keeps its own cookie in the file instead.
+export function xoxdCookieForFile(cookie: string, keychainXoxd: string | undefined): string {
+  return keychainXoxd !== undefined && cookie === keychainXoxd ? KEYCHAIN_PLACEHOLDER : cookie;
+}
+
+export function hydrateXoxdCookie(fileCookie: string, readKeychain: () => string | null): string {
+  return isPlaceholderSecret(fileCookie) ? (readKeychain() ?? fileCookie) : fileCookie;
+}
+
 export async function loadCredentials(): Promise<Credentials> {
   const fromFile = await readJsonFile<unknown>(CREDENTIALS_FILE);
   const parsed = CredentialsSchema.safeParse(fromFile ?? { version: 1, workspaces: [] });
@@ -29,13 +40,14 @@ export async function loadCredentials(): Promise<Credentials> {
     if (w.auth.auth_type === "browser") {
       const account = `xoxc:${normalizeWorkspaceUrl(w.workspace_url)}`;
       const xoxc = keychainGet(account, KEYCHAIN_SERVICE);
-      const xoxd = keychainGet("xoxd", KEYCHAIN_SERVICE);
       return {
         ...w,
         auth: {
           auth_type: "browser" as const,
           xoxc_token: xoxc ?? w.auth.xoxc_token,
-          xoxd_cookie: xoxd ?? w.auth.xoxd_cookie,
+          xoxd_cookie: hydrateXoxdCookie(w.auth.xoxd_cookie, () =>
+            keychainGet("xoxd", KEYCHAIN_SERVICE),
+          ),
         },
       };
     }
@@ -73,19 +85,20 @@ export async function saveCredentials(credentials: Credentials): Promise<void> {
   if (IS_MACOS) {
     // Browser auth: xoxd is shared across workspaces, xoxc is per-workspace.
     const firstBrowser = payload.workspaces.find((w) => w.auth.auth_type === "browser");
-    let xoxdStored = false;
+    let keychainXoxd: string | undefined;
     if (
       firstBrowser?.auth.auth_type === "browser" &&
       !isPlaceholderSecret(firstBrowser.auth.xoxd_cookie)
     ) {
       const existing = keychainGet("xoxd", KEYCHAIN_SERVICE);
-      xoxdStored =
+      const xoxdStored =
         existing === firstBrowser.auth.xoxd_cookie ||
         keychainSet({
           account: "xoxd",
           value: firstBrowser.auth.xoxd_cookie,
           service: KEYCHAIN_SERVICE,
         });
+      keychainXoxd = xoxdStored ? firstBrowser.auth.xoxd_cookie : undefined;
     }
 
     for (const w of filePayload.workspaces) {
@@ -99,9 +112,7 @@ export async function saveCredentials(credentials: Credentials): Promise<void> {
         if (tokenStored) {
           w.auth.xoxc_token = KEYCHAIN_PLACEHOLDER;
         }
-        if (xoxdStored) {
-          w.auth.xoxd_cookie = KEYCHAIN_PLACEHOLDER;
-        }
+        w.auth.xoxd_cookie = xoxdCookieForFile(w.auth.xoxd_cookie, keychainXoxd);
       }
 
       if (w.auth.auth_type === "standard") {

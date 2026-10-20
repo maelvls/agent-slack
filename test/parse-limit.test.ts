@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseLimit, requireMessageTs } from "../src/cli/message-actions.ts";
+import { parseLimit, parseMaxChars, requireMessageTs } from "../src/cli/message-actions.ts";
 
 describe("parseLimit", () => {
   test("returns undefined when no value given", () => {
@@ -27,6 +27,26 @@ describe("parseLimit", () => {
   test("rejects floats (uses integer part)", () => {
     // parseInt("3.5") → 3, which is valid
     expect(parseLimit("3.5")).toBe(3);
+  });
+});
+
+describe("parseLimit flag name", () => {
+  test("names the flag that was invalid", () => {
+    expect(() => parseLimit("abc", "--max-messages")).toThrow('Invalid --max-messages value "abc"');
+  });
+});
+
+describe("parseMaxChars", () => {
+  test("accepts zero, positive integers, and -1 for unlimited", () => {
+    expect(parseMaxChars("0", "--max-body-chars")).toBe(0);
+    expect(parseMaxChars("4000", "--max-body-chars")).toBe(4000);
+    expect(parseMaxChars("-1", "--max-body-chars")).toBe(-1);
+  });
+
+  test.each(["abc", "", "-2"])("rejects %p instead of silently disabling truncation", (raw) => {
+    expect(() => parseMaxChars(raw, "--max-body-chars")).toThrow(
+      `Invalid --max-body-chars value "${raw}"`,
+    );
   });
 });
 
