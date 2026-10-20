@@ -38,26 +38,26 @@
     "format:check": "oxfmt --check ."
   },
   "dependencies": {
-    "@slack/web-api": "^7.13.0",
+    "@slack/web-api": "^7.19.0",
     "commander": "^14.0.3",
     "https-proxy-agent": "^9.1.0",
-    "hysnappy": "^1.1.0",
+    "hysnappy": "^1.1.1",
     "node-emoji": "^2.2.0",
-    "turndown": "^7.2.2",
+    "turndown": "^7.2.4",
     "turndown-plugin-gfm": "^1.0.2",
-    "undici": "^8.8.0",
-    "zod": "^4.3.6"
+    "undici": "^8.12.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/node": "^22",
-    "@types/semver": "^7.7.1",
+    "@types/node": "^22.20.5",
+    "@types/semver": "^7.8.0",
     "@types/turndown": "^5.0.6",
-    "bun-types": "^1.3.9",
+    "bun-types": "^1.4.3",
     "oxfmt": "^0.31.0",
-    "oxlint": "^1.46.0",
-    "semver": "^7.7.4",
-    "simple-git-hooks": "^2.13.1",
-    "typescript": "^5.8.2"
+    "oxlint": "^1.89.0",
+    "semver": "^7.8.5",
+    "simple-git-hooks": "^2.14.0",
+    "typescript": "^5.9.3"
   },
   "simple-git-hooks": {
     "pre-commit": "bun run lintf && bun run format && git add -A"
