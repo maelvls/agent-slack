@@ -1,7 +1,6 @@
-import { WebClient } from "@slack/web-api";
+import { type FetchFunction, WebClient } from "@slack/web-api";
 import { extendCommandWatchdog } from "../lib/command-watchdog.ts";
 import { getKeychainTlsOption } from "../lib/keychain-ca.ts";
-import { getSlackProxyAgent } from "../lib/proxy.ts";
 import { getUserAgent } from "../lib/version.ts";
 
 export type SlackAuth =
@@ -91,6 +90,18 @@ function isAbortOrTimeoutError(error: unknown): boolean {
   );
 }
 
+/**
+ * WebClient uses `globalThis.fetch`, which already honors HTTPS_PROXY (natively under Bun,
+ * via installProxyDispatcher under Node); only the Bun keychain CA needs threading through.
+ */
+function getWebClientFetch(): FetchFunction | undefined {
+  const tlsOption = getKeychainTlsOption();
+  if (!("tls" in tlsOption)) {
+    return undefined;
+  }
+  return (input, init) => fetch(input, { ...init, ...tlsOption });
+}
+
 export class SlackApiClient {
   private auth: SlackAuth;
   private web?: WebClient;
@@ -105,8 +116,7 @@ export class SlackApiClient {
         timeout: getSlackApiTimeoutMs(),
         retryConfig: { retries: 0 },
         rejectRateLimitedCalls: true,
-        agent: getSlackProxyAgent(),
-        ...getKeychainTlsOption(),
+        fetch: getWebClientFetch(),
       });
     }
   }
