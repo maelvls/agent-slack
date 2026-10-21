@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
   parseWatchDuration,
+  isTransientWatchError,
+  retryWhileTransient,
   rtmEventInScope,
   waitForNewMessages,
 } from "../src/cli/message-watch.ts";
@@ -204,5 +206,122 @@ describe("waitForNewMessages", () => {
       accept: () => true,
     });
     expect(result.messages.map((m) => m.ts)).toEqual(["101.0", "102.0"]);
+  });
+});
+
+describe("isTransientWatchError", () => {
+  test("network loss, timeouts, 5xx and rate limits are transient", () => {
+    expect(isTransientWatchError(new TypeError("fetch failed"))).toBe(true);
+    expect(
+      isTransientWatchError(
+        new Error("Unable to connect. Is the computer able to access the url?"),
+      ),
+    ).toBe(true);
+    expect(isTransientWatchError(new Error("Slack API call conversations.replies timed out"))).toBe(
+      true,
+    );
+    expect(isTransientWatchError(new Error("Slack HTTP 503 calling conversations.history"))).toBe(
+      true,
+    );
+    expect(isTransientWatchError(new Error("ratelimited"))).toBe(true);
+    expect(isTransientWatchError({ code: "slack_webapi_request_error" })).toBe(true);
+  });
+
+  test("Slack errors that won't fix themselves are not", () => {
+    expect(isTransientWatchError(new Error("invalid_auth"))).toBe(false);
+    expect(isTransientWatchError(new Error("channel_not_found"))).toBe(false);
+    expect(isTransientWatchError(new Error("Slack HTTP 404 calling conversations.info"))).toBe(
+      false,
+    );
+    expect(
+      isTransientWatchError({
+        code: "slack_webapi_platform_error",
+        data: { error: "token_revoked" },
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("waitForNewMessages offline", () => {
+  const base = { settleMs: 0, pollIntervalMs: 10, timeoutMs: 1000 };
+
+  test("keeps polling through network errors (e.g. laptop asleep)", async () => {
+    let calls = 0;
+    const logs: string[] = [];
+    const result = await waitForNewMessages({
+      ...base,
+      after: "100.0",
+      fetchNew: async () => {
+        calls++;
+        if (calls < 4) {
+          throw new TypeError("fetch failed");
+        }
+        return [msg("101.0")];
+      },
+      accept: () => true,
+      log: (m) => logs.push(m),
+    });
+    expect(result).toEqual({ messages: [msg("101.0")], timedOut: false });
+    expect(calls).toBe(4);
+    // One warning per outage, not one per attempt.
+    expect(logs.filter((l) => l.includes("fetch failed"))).toHaveLength(1);
+  });
+
+  test("times out normally when the network never comes back", async () => {
+    const result = await waitForNewMessages({
+      ...base,
+      timeoutMs: 50,
+      after: "100.0",
+      fetchNew: async () => {
+        throw new TypeError("fetch failed");
+      },
+      accept: () => true,
+    });
+    expect(result).toEqual({ messages: [], timedOut: true });
+  });
+
+  test("still fails fast on errors that won't fix themselves", async () => {
+    await expect(
+      waitForNewMessages({
+        ...base,
+        after: "100.0",
+        fetchNew: async () => {
+          throw new Error("invalid_auth");
+        },
+        accept: () => true,
+      }),
+    ).rejects.toThrow("invalid_auth");
+  });
+});
+
+describe("retryWhileTransient", () => {
+  test("retries transient failures, then returns", async () => {
+    let calls = 0;
+    const value = await retryWhileTransient({
+      what: "lookup",
+      deadline: Date.now() + 1000,
+      intervalMs: 5,
+      fn: async () => {
+        if (++calls < 3) {
+          throw new TypeError("fetch failed");
+        }
+        return "ok";
+      },
+    });
+    expect(value).toBe("ok");
+    expect(calls).toBe(3);
+  });
+
+  test("gives up at the deadline and rethrows", async () => {
+    await expect(
+      retryWhileTransient({
+        what: "lookup",
+        deadline: Date.now() + 20,
+        intervalMs: 5,
+        fn: async () => {
+          throw new TypeError("fetch failed");
+        },
+      }),
+    ).rejects.toThrow("fetch failed");
   });
 });
