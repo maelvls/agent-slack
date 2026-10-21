@@ -29,7 +29,9 @@ export type CliContext = {
   parseContentType: (value: unknown) => "any" | "text" | "image" | "snippet" | "file";
   parseCurl: (curl: string) => ReturnType<typeof parseSlackCurlCommand>;
   importDesktop: () => ReturnType<typeof extractFromSlackDesktop>;
-  importChrome: () => ReturnType<typeof extractFromChrome>;
+  importChrome: () =>
+    | Awaited<ReturnType<typeof extractFromChrome>>
+    | ReturnType<typeof extractFromChrome>;
   importBrave: () => ReturnType<typeof extractFromBrave>;
   importFirefox: () => ReturnType<typeof extractFromFirefox>;
 };

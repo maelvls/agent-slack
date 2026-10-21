@@ -1,5 +1,8 @@
 import { execSync } from "node:child_process";
-import { platform } from "node:os";
+import { existsSync } from "node:fs";
+import { homedir, platform } from "node:os";
+import { join } from "node:path";
+import { getSafeStoragePasswords, readSlackCookieFromChromiumDb } from "./chromium-cookie.ts";
 
 type ChromeExtractedTeam = { url: string; name?: string; token: string };
 
@@ -21,21 +24,6 @@ function osascript(script: string): string {
     timeout: 7000,
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
-}
-
-function cookieScript(): string {
-  return `
-    tell application "Google Chrome"
-      repeat with w in windows
-        repeat with t in tabs of w
-          if URL of t contains "slack.com" then
-            return execute t javascript "document.cookie.split('; ').find(c => c.startsWith('d='))?.split('=')[1] || ''"
-          end if
-        end repeat
-      end repeat
-      return ""
-    end tell
-  `;
 }
 
 const TEAM_JSON_PATHS = [
@@ -81,30 +69,66 @@ function teamsScript(): string {
   `;
 }
 
-export function extractFromChrome(): ChromeExtracted | null {
-  if (!IS_MACOS) {
+const CHROME_PROFILE_DIR = join(
+  homedir(),
+  "Library",
+  "Application Support",
+  "Google",
+  "Chrome",
+  "Default",
+);
+const CHROME_SAFE_STORAGE_SERVICES = ["Chrome Safe Storage", "Chromium Safe Storage"];
+
+/** Chrome moved the Cookies DB under Network/ (M96+); older profiles keep it at the root. */
+export function chromeCookiesDbPath(profileDir: string = CHROME_PROFILE_DIR): string {
+  const networkPath = join(profileDir, "Network", "Cookies");
+  return existsSync(networkPath) ? networkPath : join(profileDir, "Cookies");
+}
+
+function extractTeamsFromChromeTab(): ChromeExtractedTeam[] {
+  let teamsObj: unknown = {};
+  try {
+    teamsObj = JSON.parse(osascript(teamsScript()) || "{}");
+  } catch {
+    teamsObj = {};
+  }
+  const teamsRecord = isRecord(teamsObj) ? teamsObj : {};
+  return Object.values(teamsRecord)
+    .map((t) => toChromeTeam(t))
+    .filter((t): t is ChromeExtractedTeam => t !== null);
+}
+
+function extractCookieDFromChrome(): Promise<string> {
+  // Slack's `d` cookie is HttpOnly, so `document.cookie` in a tab never sees it.
+  return readSlackCookieFromChromiumDb({
+    dbPath: chromeCookiesDbPath(),
+    browser: "Chrome",
+    getPasswords: () => getSafeStoragePasswords(CHROME_SAFE_STORAGE_SERVICES),
+  });
+}
+
+/**
+ * Only the Default profile's cookie is read: AppleScript can't tell which profile
+ * a tab belongs to, so Slack must be open in that profile.
+ */
+export async function extractFromChrome(
+  deps: {
+    isMacos?: boolean;
+    readTeams?: () => ChromeExtractedTeam[];
+    readCookie?: () => Promise<string>;
+  } = {},
+): Promise<ChromeExtracted | null> {
+  if (!(deps.isMacos ?? IS_MACOS)) {
     return null;
   }
   try {
-    const cookie = osascript(cookieScript());
-    if (!cookie || !cookie.startsWith("xoxd-")) {
+    // Look for a Slack tab first so a missing tab doesn't cost a keychain prompt.
+    const teams = (deps.readTeams ?? extractTeamsFromChromeTab)();
+    if (teams.length === 0) {
       return null;
     }
-
-    const teamsRaw = osascript(teamsScript());
-    let teamsObj: unknown = {};
-    try {
-      teamsObj = JSON.parse(teamsRaw || "{}");
-    } catch {
-      teamsObj = {};
-    }
-
-    const teamsRecord = isRecord(teamsObj) ? teamsObj : {};
-    const teams: ChromeExtractedTeam[] = Object.values(teamsRecord)
-      .map((t) => toChromeTeam(t))
-      .filter((t): t is ChromeExtractedTeam => t !== null);
-
-    if (teams.length === 0) {
+    const cookie = await (deps.readCookie ?? extractCookieDFromChrome)();
+    if (!cookie || !cookie.startsWith("xoxd-")) {
       return null;
     }
     return { cookie_d: cookie, teams };

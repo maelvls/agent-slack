@@ -144,7 +144,7 @@ agent-slack auth test
 ```
 
 > [!NOTE]
-> `import-brave` / `import-chrome` read tokens from a logged-in Slack tab via AppleScript. Both browsers ship with **Allow JavaScript from Apple Events** disabled by default — enable it in **View → Developer** before running these commands. macOS will prompt for your password the first time.
+> `import-brave` / `import-chrome` read tokens from a logged-in Slack tab via AppleScript, and the `d` cookie from the browser's **Default** profile, so keep Slack open in that profile. Both browsers ship with **Allow JavaScript from Apple Events** disabled by default — enable it in **View → Developer** before running these commands. macOS will prompt for your password the first time.
 
 Alternatively, set env vars:
 

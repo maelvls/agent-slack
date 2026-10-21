@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { listProfileCandidates } from "../src/auth/firefox-profile.ts";
+import { copySqliteForRead, listProfileCandidates } from "../src/auth/firefox-profile.ts";
 
 const tempDirs: string[] = [];
 
@@ -20,5 +20,18 @@ describe("listProfileCandidates", () => {
     await mkdir(profilePath, { recursive: true });
 
     expect(await listProfileCandidates(baseDir)).toEqual([{ path: profilePath, isDefault: false }]);
+  });
+});
+
+describe("copySqliteForRead", () => {
+  test("removes its temp dir when the copy fails", async () => {
+    // A private root, so parallel runs creating their own copies can't skew the check.
+    const root = await mkdtemp(join(tmpdir(), "agent-slack-copy-test-"));
+    try {
+      await expect(copySqliteForRead(join(root, "does-not-exist.sqlite"), root)).rejects.toThrow();
+      expect(await readdir(root)).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

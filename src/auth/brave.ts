@@ -1,10 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { queryReadonlySqlite } from "./firefox-profile.ts";
-import { decryptChromiumCookieValue } from "./chromium-cookie.ts";
-import { getKeychainTimeoutMs } from "./keychain.ts";
+import { getSafeStoragePasswords, readSlackCookieFromChromiumDb } from "./chromium-cookie.ts";
 import { isRecord } from "../lib/object-type-guards.ts";
 
 type BraveExtractedTeam = { url: string; name?: string; token: string };
@@ -124,76 +121,19 @@ const BRAVE_COOKIES_DB = join(
   "Cookies",
 );
 
-function getSafeStoragePasswords(): string[] {
-  const services = [
-    "Brave Safe Storage",
-    "Brave Browser Safe Storage",
-    "Chrome Safe Storage",
-    "Chromium Safe Storage",
-  ];
-  const passwords: string[] = [];
-  for (const service of services) {
-    try {
-      const out = execFileSync("security", ["find-generic-password", "-w", "-s", service], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: getKeychainTimeoutMs(),
-      }).trim();
-      if (out) {
-        passwords.push(out);
-      }
-    } catch {
-      // continue
-    }
-  }
-  return passwords;
-}
+const BRAVE_SAFE_STORAGE_SERVICES = [
+  "Brave Safe Storage",
+  "Brave Browser Safe Storage",
+  "Chrome Safe Storage",
+  "Chromium Safe Storage",
+];
 
-async function extractCookieDFromBrave(): Promise<string> {
-  if (!existsSync(BRAVE_COOKIES_DB)) {
-    throw new Error(`Brave Cookies DB not found: ${BRAVE_COOKIES_DB}`);
-  }
-
-  const rows = (await queryReadonlySqlite(
-    BRAVE_COOKIES_DB,
-    "select host_key, name, value, encrypted_value from cookies where name = 'd' and host_key like '%slack.com' order by length(encrypted_value) desc",
-  )) as {
-    host_key: string;
-    name: string;
-    value: string;
-    encrypted_value: Uint8Array;
-  }[];
-
-  if (!rows || rows.length === 0) {
-    throw new Error("No Slack 'd' cookie found in Brave");
-  }
-  const row = rows[0]!;
-  if (row.value && row.value.startsWith("xoxd-")) {
-    return row.value;
-  }
-
-  const encrypted = Buffer.from(row.encrypted_value || []);
-  if (encrypted.length === 0) {
-    throw new Error("Brave Slack 'd' cookie had no encrypted_value");
-  }
-
-  const prefix = encrypted.subarray(0, 3).toString("utf8");
-  const data = prefix === "v10" || prefix === "v11" ? encrypted.subarray(3) : encrypted;
-  const passwords = getSafeStoragePasswords();
-
-  for (const password of passwords) {
-    try {
-      const decrypted = decryptChromiumCookieValue(data, { password, iterations: 1003 });
-      const match = decrypted.match(/xoxd-[A-Za-z0-9%/+_=.-]+/);
-      if (match) {
-        return match[0]!;
-      }
-    } catch {
-      // continue
-    }
-  }
-
-  throw new Error("Could not decrypt Slack 'd' cookie from Brave");
+function extractCookieDFromBrave(): Promise<string> {
+  return readSlackCookieFromChromiumDb({
+    dbPath: BRAVE_COOKIES_DB,
+    browser: "Brave",
+    getPasswords: () => getSafeStoragePasswords(BRAVE_SAFE_STORAGE_SERVICES),
+  });
 }
 
 // --- Main export ---
