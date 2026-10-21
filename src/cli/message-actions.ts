@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { CliContext } from "./context.ts";
 import { fetchMessage } from "../slack/messages.ts";
-import { parseMsgTarget } from "./targets.ts";
+import { parseMsgTarget, targetWorkspaceUrl } from "./targets.ts";
 import { resolveChannelId, openDmChannel } from "../slack/channels.ts";
 import { normalizeSlackReactionName } from "../slack/emoji.ts";
 import { warnOnTruncatedSlackUrl } from "./message-url-warning.ts";
@@ -343,7 +343,8 @@ export async function editMessage(input: {
       "message edit does not support user ID targets. Use a channel name, channel ID, or message URL.",
     );
   }
-  const workspaceUrl = input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+  const workspaceUrl =
+    targetWorkspaceUrl(target) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
   const formattedText = formatOutboundSlackText(input.text);
   // Unlike chat.postMessage, chat.update escapes `<` and `>` in `text` when
   // no blocks are given, so `<url|label>` and `<@U123>` render literally.
@@ -355,7 +356,7 @@ export async function editMessage(input: {
       : null;
 
   await input.ctx.withAutoRefresh({
-    workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
+    workspaceUrl,
     work: async () => {
       if (target.kind === "url") {
         const { ref } = target;
@@ -400,10 +401,11 @@ export async function deleteMessage(input: {
       "message delete does not support user ID targets. Use a channel name, channel ID, or message URL.",
     );
   }
-  const workspaceUrl = input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+  const workspaceUrl =
+    targetWorkspaceUrl(target) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
 
   await input.ctx.withAutoRefresh({
-    workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
+    workspaceUrl,
     work: async () => {
       if (target.kind === "url") {
         const { ref } = target;
@@ -446,10 +448,11 @@ export async function reactOnTarget(input: {
       "react does not support user ID targets. Use a channel name, channel ID, or message URL.",
     );
   }
-  const workspaceUrl = input.ctx.effectiveWorkspaceUrl(input.options?.workspace);
+  const workspaceUrl =
+    targetWorkspaceUrl(target) ?? input.ctx.effectiveWorkspaceUrl(input.options?.workspace);
 
   await input.ctx.withAutoRefresh({
-    workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
+    workspaceUrl,
     work: async () => {
       if (target.kind === "url") {
         const { ref } = target;

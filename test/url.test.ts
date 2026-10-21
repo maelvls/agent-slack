@@ -1,5 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { buildSlackMessageUrl, parseSlackMessageUrl } from "../src/slack/url.ts";
+import {
+  buildSlackMessageUrl,
+  parseSlackChannelUrl,
+  parseSlackMessageUrl,
+} from "../src/slack/url.ts";
+
+describe("parseSlackChannelUrl", () => {
+  test("parses a channel or DM link without a message part", () => {
+    expect(
+      parseSlackChannelUrl("https://paloaltonetworks.enterprise.slack.com/archives/D0A8RUY2JG0"),
+    ).toEqual({
+      workspace_url: "https://paloaltonetworks.enterprise.slack.com",
+      channel_id: "D0A8RUY2JG0",
+    });
+    expect(parseSlackChannelUrl("https://acme.slack.com/archives/C060RS20UMV/").channel_id).toBe(
+      "C060RS20UMV",
+    );
+  });
+
+  test("rejects message URLs and non-channel paths", () => {
+    expect(() =>
+      parseSlackChannelUrl("https://acme.slack.com/archives/C060RS20UMV/p1770165109628379"),
+    ).toThrow();
+    expect(() => parseSlackChannelUrl("https://acme.slack.com/archives/general")).toThrow();
+    expect(() => parseSlackChannelUrl("https://example.com/archives/C060RS20UMV")).toThrow();
+  });
+});
 
 describe("parseSlackMessageUrl", () => {
   test("parses archives URL with p<digits>", () => {

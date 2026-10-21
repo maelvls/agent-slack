@@ -1,10 +1,11 @@
-import { parseSlackMessageUrl, type SlackMessageRef } from "../slack/url.ts";
+import { parseSlackChannelUrl, parseSlackMessageUrl, type SlackMessageRef } from "../slack/url.ts";
 import { isChannelId } from "../slack/channels.ts";
 import { isUserId } from "../slack/user-id.ts";
 
 export type MsgTarget =
   | { kind: "url"; ref: SlackMessageRef }
-  | { kind: "channel"; channel: string }
+  // workspaceUrl is set when the channel came from a channel URL.
+  | { kind: "channel"; channel: string; workspaceUrl?: string }
   | { kind: "user"; userId: string };
 
 export function parseMsgTarget(input: string): MsgTarget {
@@ -20,6 +21,13 @@ export function parseMsgTarget(input: string): MsgTarget {
     // not a slack message URL
   }
 
+  try {
+    const ref = parseSlackChannelUrl(trimmed);
+    return { kind: "channel", channel: ref.channel_id, workspaceUrl: ref.workspace_url };
+  } catch {
+    // not a slack channel URL
+  }
+
   if (isUserId(trimmed)) {
     return { kind: "user", userId: trimmed };
   }
@@ -32,6 +40,17 @@ export function parseMsgTarget(input: string): MsgTarget {
 
   // Allow bare channel names ("general") for convenience.
   return { kind: "channel", channel: `#${trimmed}` };
+}
+
+/** The workspace a message or channel URL target points at, if the target is a URL. */
+export function targetWorkspaceUrl(target: MsgTarget | undefined): string | undefined {
+  if (target?.kind === "url") {
+    return target.ref.workspace_url;
+  }
+  if (target?.kind === "channel") {
+    return target.workspaceUrl;
+  }
+  return undefined;
 }
 
 export function isSlackTs(input: string): boolean {
@@ -50,6 +69,12 @@ function looksLikeExplicitTarget(input: string): boolean {
     return true;
   } catch {
     // not a slack message URL
+  }
+  try {
+    parseSlackChannelUrl(trimmed);
+    return true;
+  } catch {
+    // not a slack channel URL
   }
   return (
     isChannelId(trimmed) || isUserId(trimmed) || (trimmed.startsWith("#") && !/\s/.test(trimmed))

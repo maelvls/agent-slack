@@ -1,5 +1,5 @@
 import type { CliContext } from "./context.ts";
-import { parseMsgTarget } from "./targets.ts";
+import { parseMsgTarget, targetWorkspaceUrl } from "./targets.ts";
 import { resolveChannelId, openDmChannel } from "../slack/channels.ts";
 import {
   fetchChannelHistory,
@@ -248,7 +248,7 @@ async function resolveWatchScope(input: {
 }): Promise<{ scope: WatchScope; after: string; workspaceUrl: string | undefined }> {
   const target = parseMsgTarget(input.targetInput);
   const flagWorkspace = input.ctx.effectiveWorkspaceUrl(input.options.workspace);
-  const workspaceUrl = target.kind === "url" ? target.ref.workspace_url : flagWorkspace;
+  const workspaceUrl = targetWorkspaceUrl(target) ?? flagWorkspace;
   const { client, workspace_url } = await input.ctx.getClientForWorkspace(workspaceUrl);
 
   let channelId: string;

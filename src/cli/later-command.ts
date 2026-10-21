@@ -9,7 +9,7 @@ import {
   updateLaterMark,
 } from "../slack/later.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
-import { parseMsgTarget } from "./targets.ts";
+import { parseMsgTarget, targetWorkspaceUrl } from "./targets.ts";
 import { resolveChannelId } from "../slack/channels.ts";
 import { parseLimit, parseMaxChars } from "./message-actions.ts";
 
@@ -36,7 +36,7 @@ function resolveTargetRef(input: {
     };
   }
 
-  const workspaceUrl = ctx.effectiveWorkspaceUrl(options.workspace);
+  const workspaceUrl = targetWorkspaceUrl(target) ?? ctx.effectiveWorkspaceUrl(options.workspace);
   const ts = options.ts?.trim();
   if (!ts) {
     throw new Error('When targeting a channel, you must pass --ts "<seconds>.<micros>"');

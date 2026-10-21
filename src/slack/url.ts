@@ -54,6 +54,36 @@ export function parseSlackMessageUrl(input: string): SlackMessageRef {
   return { workspace_url, channel_id, message_ts, thread_ts_hint, raw: input, possiblyTruncated };
 }
 
+export type SlackChannelRef = {
+  workspace_url: string;
+  channel_id: string;
+};
+
+/**
+ * Parse a channel link without a message part, e.g. what "Copy link" on a
+ * channel or DM gives: https://acme.slack.com/archives/D0A8RUY2JG0
+ */
+export function parseSlackChannelUrl(input: string): SlackChannelRef {
+  let url: URL;
+  try {
+    url = new URL(input);
+  } catch {
+    throw new Error(`Invalid URL: ${input}`);
+  }
+
+  if (!/\.slack\.com$/i.test(url.hostname)) {
+    throw new Error(`Not a Slack workspace URL: ${url.hostname}`);
+  }
+
+  const parts = url.pathname.split("/").filter(Boolean);
+  // /archives/<channel>
+  if (parts.length !== 2 || parts[0] !== "archives" || !/^[CDG][A-Z0-9]{8,}$/.test(parts[1]!)) {
+    throw new Error(`Unsupported Slack channel URL path: ${url.pathname}`);
+  }
+
+  return { workspace_url: `${url.protocol}//${url.host}`, channel_id: parts[1]! };
+}
+
 export function buildSlackMessageUrl(input: {
   workspace_url: string;
   channel_id: string;

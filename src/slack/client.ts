@@ -283,9 +283,14 @@ export class SlackApiClient {
     return data;
   }
 
+  /**
+   * `options.maxRateLimitWaitMs` overrides AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS for
+   * this call; 0 makes a 429 throw instead of waiting.
+   */
   async api(
     method: string,
     params: Record<string, unknown> = {},
+    options?: { maxRateLimitWaitMs?: number },
   ): Promise<Record<string, unknown>> {
     if (this.auth.auth_type === "standard") {
       if (!this.web) {
@@ -308,6 +313,7 @@ export class SlackApiClient {
       auth,
       method,
       params,
+      maxRateLimitWaitMs: options?.maxRateLimitWaitMs,
     });
   }
 
@@ -316,6 +322,7 @@ export class SlackApiClient {
     auth: Extract<SlackAuth, { auth_type: "browser" }>;
     method: string;
     params: Record<string, unknown>;
+    maxRateLimitWaitMs?: number;
     attempt?: number;
   }): Promise<Record<string, unknown>> {
     const attempt = input.attempt ?? 0;
@@ -352,7 +359,7 @@ export class SlackApiClient {
     if (response.status === 429 && attempt < 3) {
       const retryAfter = parseRetryAfterSec(response.headers.get("Retry-After"));
       const delayMs = Math.max(retryAfter, 1) * 1000;
-      const maxWaitMs = getSlackRateLimitMaxWaitMs();
+      const maxWaitMs = input.maxRateLimitWaitMs ?? getSlackRateLimitMaxWaitMs();
       if (delayMs > maxWaitMs) {
         throw slackRateLimitError({ method: input.method, retryAfterSec: retryAfter, maxWaitMs });
       }

@@ -1,5 +1,5 @@
 import type { CliContext } from "./context.ts";
-import { parseMsgTarget, type MsgTarget } from "./targets.ts";
+import { parseMsgTarget, targetWorkspaceUrl, type MsgTarget } from "./targets.ts";
 import { warnOnTruncatedSlackUrl } from "./message-url-warning.ts";
 import { normalizeChannelInput, openDmChannel, resolveChannelId } from "../slack/channels.ts";
 import type { SlackApiClient } from "../slack/client.ts";
@@ -44,9 +44,7 @@ export async function createDraftAction(input: {
 }): Promise<Record<string, unknown>> {
   const target = parseMsgTarget(String(input.targetInput));
   const workspaceUrl =
-    target.kind === "url"
-      ? target.ref.workspace_url
-      : input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+    targetWorkspaceUrl(target) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
   if (target.kind === "channel") {
     await input.ctx.assertWorkspaceSpecifiedForChannelNames({
       workspaceUrl,
@@ -119,9 +117,7 @@ export async function updateDraftAction(input: {
     ? parseMsgTarget(String(input.options.channel))
     : undefined;
   const workspaceUrl =
-    channelTarget?.kind === "url"
-      ? channelTarget.ref.workspace_url
-      : input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+    targetWorkspaceUrl(channelTarget) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
   if (channelTarget?.kind === "channel") {
     await input.ctx.assertWorkspaceSpecifiedForChannelNames({
       workspaceUrl,

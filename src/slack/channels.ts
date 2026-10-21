@@ -1,5 +1,7 @@
 import type { SlackApiClient } from "./client.ts";
 import { asArray, getString, isRecord } from "../lib/object-type-guards.ts";
+import { cacheChannelIds, getCachedChannelId } from "./channel-cache.ts";
+import { parseSlackChannelUrl } from "./url.ts";
 
 const DEFAULT_CONVERSATION_TYPES = "public_channel,private_channel,im,mpim";
 
@@ -37,6 +39,11 @@ export function normalizeChannelInput(input: string): {
   if (isChannelId(trimmed)) {
     return { kind: "id", value: trimmed };
   }
+  try {
+    return { kind: "id", value: parseSlackChannelUrl(trimmed).channel_id };
+  } catch {
+    // not a channel URL
+  }
   return { kind: "name", value: trimmed };
 }
 
@@ -49,6 +56,13 @@ export async function resolveChannelId(client: SlackApiClient, input: string): P
   const name = normalized.value;
   if (!name) {
     throw new Error("Channel name is empty");
+  }
+
+  // Mock clients in tests don't implement getWorkspaceUrl.
+  const workspaceUrl = client.getWorkspaceUrl?.();
+  const cached = await getCachedChannelId(workspaceUrl, name);
+  if (cached) {
+    return cached;
   }
 
   // Slack has no name→ID lookup API. conversations.list paginates the entire
@@ -68,6 +82,7 @@ export async function resolveChannelId(client: SlackApiClient, input: string): P
       const channel = isRecord(matches[0]!.channel) ? matches[0]!.channel : null;
       const channelId = channel ? getString(channel.id) : undefined;
       if (channelId) {
+        await cacheChannelIds(workspaceUrl, new Map([[name, channelId]]));
         return channelId;
       }
     }
@@ -75,31 +90,66 @@ export async function resolveChannelId(client: SlackApiClient, input: string): P
     // search may fail (e.g. token lacks search:read scope) — fall through to pagination
   }
 
-  // Fallback: paginate conversations.list until we find a match
+  // Fallback: paginate conversations.list until we find a match. Every page
+  // seen is cached so later lookups of other names skip the walk. A 429 here
+  // fails fast: waiting it out page after page can take many minutes.
+  const seen = new Map<string, string>();
   let cursor: string | undefined;
-  for (;;) {
-    const resp = await client.api("conversations.list", {
-      exclude_archived: true,
-      limit: 200,
-      cursor,
-      types: "public_channel,private_channel",
-    });
-    const chans = asArray(resp.channels).filter(isRecord);
-    for (const c of chans) {
-      if (getString(c.name) === name && getString(c.id)) {
-        return getString(c.id)!;
+  try {
+    for (;;) {
+      let resp: Record<string, unknown>;
+      try {
+        resp = await client.api(
+          "conversations.list",
+          {
+            exclude_archived: true,
+            limit: 200,
+            cursor,
+            types: "public_channel,private_channel",
+          },
+          { maxRateLimitWaitMs: 0 },
+        );
+      } catch (err) {
+        if (isRateLimitError(err)) {
+          throw new Error(
+            `Could not resolve #${name}: search found no match and Slack rate limited ` +
+              "conversations.list. Pass the channel ID (C…/D…/G…) or a channel URL instead.",
+          );
+        }
+        throw err;
       }
-    }
+      const chans = asArray(resp.channels).filter(isRecord);
+      for (const c of chans) {
+        const cName = getString(c.name);
+        const cId = getString(c.id);
+        if (cName && cId) {
+          seen.set(cName, cId);
+        }
+      }
+      const found = seen.get(name);
+      if (found) {
+        return found;
+      }
 
-    const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
-    const next = meta ? getString(meta.next_cursor) : undefined;
-    if (!next) {
-      break;
+      const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
+      const next = meta ? getString(meta.next_cursor) : undefined;
+      if (!next) {
+        break;
+      }
+      cursor = next;
     }
-    cursor = next;
+  } finally {
+    await cacheChannelIds(workspaceUrl, seen);
   }
 
   throw new Error(`Could not resolve channel name: #${name}`);
+}
+
+function isRateLimitError(err: unknown): boolean {
+  if (isRecord(err) && err.code === "slack_webapi_rate_limited_error") {
+    return true;
+  }
+  return err instanceof Error && /rate limited/i.test(err.message);
 }
 
 /**

@@ -285,7 +285,7 @@ export function registerChannelCommand(input: { program: Command; ctx: CliContex
             throw new Error("--ts is required when target is a channel name or ID");
           }
           ({ ts } = options);
-          workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
+          workspaceUrl = input.ctx.effectiveWorkspaceUrl(target.workspaceUrl ?? options.workspace);
           channelId = target.channel;
         } else {
           throw new Error("User targets are not supported for channel mark");

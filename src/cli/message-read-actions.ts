@@ -6,7 +6,7 @@ import {
   toCompactMessage,
 } from "../slack/messages.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
-import { parseMsgTarget } from "./targets.ts";
+import { parseMsgTarget, targetWorkspaceUrl } from "./targets.ts";
 import { resolveChannelId } from "../slack/channels.ts";
 import { downloadMessageFiles } from "./message-file-downloads.ts";
 import { truncatedSlackUrlWarning } from "./message-url-warning.ts";
@@ -35,11 +35,12 @@ export async function handleMessageGet(input: {
       "message get does not support user ID targets. Use a channel name, channel ID, or message URL.",
     );
   }
-  const workspaceUrl = input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+  const workspaceUrl =
+    targetWorkspaceUrl(target) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
   const maxBodyChars = parseMaxChars(input.options.maxBodyChars, "--max-body-chars");
 
   return input.ctx.withAutoRefresh({
-    workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
+    workspaceUrl,
     work: async () => {
       if (target.kind === "url") {
         const { ref } = target;
@@ -134,11 +135,12 @@ export async function handleMessageList(input: {
       "message list does not support user ID targets. Use a channel name, channel ID, or message URL.",
     );
   }
-  const workspaceUrl = input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+  const workspaceUrl =
+    targetWorkspaceUrl(target) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
   const maxBodyChars = parseMaxChars(input.options.maxBodyChars, "--max-body-chars");
 
   return input.ctx.withAutoRefresh({
-    workspaceUrl: target.kind === "url" ? target.ref.workspace_url : workspaceUrl,
+    workspaceUrl,
     work: async () => {
       const withReactions = parseReactionFilters(input.options.withReaction);
       const withoutReactions = parseReactionFilters(input.options.withoutReaction);

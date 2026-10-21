@@ -1,5 +1,5 @@
 import type { CliContext } from "./context.ts";
-import { parseMsgTarget } from "./targets.ts";
+import { parseMsgTarget, targetWorkspaceUrl } from "./targets.ts";
 import { openDmChannel, resolveChannelId } from "../slack/channels.ts";
 import type { SlackApiClient } from "../slack/client.ts";
 import {
@@ -23,9 +23,7 @@ export async function listScheduledMessages(input: {
     ? parseMsgTarget(String(input.options.channel))
     : undefined;
   const workspaceUrl =
-    channelTarget?.kind === "url"
-      ? channelTarget.ref.workspace_url
-      : input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+    targetWorkspaceUrl(channelTarget) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
   if (channelTarget?.kind === "channel") {
     await input.ctx.assertWorkspaceSpecifiedForChannelNames({
       workspaceUrl,
@@ -58,9 +56,7 @@ export async function cancelScheduledMessage(input: {
 }): Promise<Record<string, unknown>> {
   const channelTarget = parseMsgTarget(String(input.options.channel));
   const workspaceUrl =
-    channelTarget.kind === "url"
-      ? channelTarget.ref.workspace_url
-      : input.ctx.effectiveWorkspaceUrl(input.options.workspace);
+    targetWorkspaceUrl(channelTarget) ?? input.ctx.effectiveWorkspaceUrl(input.options.workspace);
   if (channelTarget.kind === "channel") {
     await input.ctx.assertWorkspaceSpecifiedForChannelNames({
       workspaceUrl,

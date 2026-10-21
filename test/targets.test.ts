@@ -1,5 +1,31 @@
 import { describe, expect, test } from "bun:test";
-import { parseMsgTarget } from "../src/cli/targets.ts";
+import { parseMsgTarget, resolveTargetArgs, targetWorkspaceUrl } from "../src/cli/targets.ts";
+
+describe("channel URL targets", () => {
+  const url = "https://paloaltonetworks.enterprise.slack.com/archives/D0A8RUY2JG0";
+
+  test("parses a channel URL into its ID and workspace instead of a #name", () => {
+    expect(parseMsgTarget(url)).toEqual({
+      kind: "channel",
+      channel: "D0A8RUY2JG0",
+      workspaceUrl: "https://paloaltonetworks.enterprise.slack.com",
+    });
+  });
+
+  test("targetWorkspaceUrl prefers the URL's workspace", () => {
+    expect(targetWorkspaceUrl(parseMsgTarget(url))).toBe(
+      "https://paloaltonetworks.enterprise.slack.com",
+    );
+    expect(targetWorkspaceUrl(parseMsgTarget("#general"))).toBeUndefined();
+    expect(targetWorkspaceUrl(undefined)).toBeUndefined();
+  });
+
+  test("a channel URL positional conflicts with a different --channel", () => {
+    expect(() =>
+      resolveTargetArgs({ positionals: [url, undefined], channel: "C060RS20UMV" }),
+    ).toThrow(/Conflicting targets/);
+  });
+});
 
 describe("parseMsgTarget", () => {
   test("parses slack message URLs", () => {
