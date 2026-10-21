@@ -4,8 +4,41 @@ import {
   rtmEventInScope,
   waitForNewMessages,
 } from "../src/cli/message-watch.ts";
-import { toRtmMessageEvent } from "../src/slack/rtm.ts";
+import { rtmSocketUrl, toRtmMessageEvent } from "../src/slack/rtm.ts";
+import type { SlackApiClient, SlackAuth } from "../src/slack/client.ts";
 import type { SlackMessageSummary } from "../src/slack/messages.ts";
+
+describe("rtmSocketUrl", () => {
+  const browser: SlackAuth = { auth_type: "browser", xoxc_token: "xoxc-1-2", xoxd_cookie: "d" };
+  const failing = (message: string) =>
+    ({
+      api: async () => {
+        throw new Error(message);
+      },
+    }) as unknown as SlackApiClient;
+
+  test("uses the URL rtm.connect returns", async () => {
+    const client = {
+      api: async () => ({ url: "wss://rtm.example/abc" }),
+    } as unknown as SlackApiClient;
+    expect(await rtmSocketUrl(client, browser)).toBe("wss://rtm.example/abc");
+  });
+
+  test("on Enterprise Grid, browser auth connects like the web client", async () => {
+    expect(await rtmSocketUrl(failing("enterprise_is_restricted"), browser)).toBe(
+      "wss://wss-primary.slack.com/?token=xoxc-1-2",
+    );
+  });
+
+  test("other failures, and non-browser tokens, still throw", async () => {
+    await expect(rtmSocketUrl(failing("not_allowed_token_type"), browser)).rejects.toThrow(
+      "not_allowed_token_type",
+    );
+    await expect(
+      rtmSocketUrl(failing("enterprise_is_restricted"), { auth_type: "standard", token: "xoxp-1" }),
+    ).rejects.toThrow("enterprise_is_restricted");
+  });
+});
 
 function msg(ts: string, user = "U_OTHER", thread_ts?: string): SlackMessageSummary {
   return { channel_id: "C1", ts, user, thread_ts, text: ts, markdown: ts };

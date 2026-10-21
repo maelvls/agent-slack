@@ -41,6 +41,33 @@ export function toRtmMessageEvent(data: unknown): RtmMessageEvent | null {
   };
 }
 
+// The websocket the Slack web client itself opens. It speaks the same RTM event
+// format, and unlike rtm.connect it is not blocked on Enterprise Grid.
+const WEB_CLIENT_SOCKET_URL = "wss://wss-primary.slack.com/";
+
+/**
+ * rtm.connect hands out a websocket URL, but Enterprise Grid refuses it with
+ * `enterprise_is_restricted`. Browser tokens can then connect the way
+ * app.slack.com does: straight to the web client socket with the xoxc token.
+ */
+export async function rtmSocketUrl(client: SlackApiClient, auth: SlackAuth): Promise<string> {
+  let resp: Record<string, unknown>;
+  try {
+    resp = await client.api("rtm.connect", {});
+  } catch (err) {
+    const restricted = err instanceof Error && err.message.includes("enterprise_is_restricted");
+    if (restricted && auth.auth_type === "browser") {
+      return `${WEB_CLIENT_SOCKET_URL}?${new URLSearchParams({ token: auth.xoxc_token })}`;
+    }
+    throw err;
+  }
+  const url = getString(resp.url);
+  if (!url) {
+    throw new Error("rtm.connect returned no websocket url");
+  }
+  return url;
+}
+
 /**
  * Open a Slack RTM websocket (the push channel the Slack clients use). Works with
  * browser auth (xoxc/xoxd) and classic tokens; newer app tokens get
@@ -60,11 +87,7 @@ export async function openRtm(input: {
   if (typeof WebSocket === "undefined") {
     throw new Error("WebSocket is not available in this runtime");
   }
-  const resp = await input.client.api("rtm.connect", {});
-  const url = getString(resp.url);
-  if (!url) {
-    throw new Error("rtm.connect returned no websocket url");
-  }
+  const url = await rtmSocketUrl(input.client, input.auth);
 
   const headers: Record<string, string> = {
     Origin: "https://app.slack.com",
