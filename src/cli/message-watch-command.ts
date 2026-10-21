@@ -34,7 +34,10 @@ export function registerMessageWatchCommand(input: { messageCmd: Command; ctx: C
       "--after <ts>",
       "Only report messages newer than this ts (default: the target message, or now for a bare channel). Replies already posted after it return immediately.",
     )
-    .option("--timeout <duration>", "Give up after this long, e.g. 90s, 10m, 2h", "30m")
+    .option(
+      "--timeout <duration>",
+      "Give up after this long, e.g. 90s, 10m, 2h (default: wait until a message arrives)",
+    )
     .option(
       "--settle <duration>",
       "After the first new message, wait this long to collect follow-ups",
