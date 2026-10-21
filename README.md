@@ -227,7 +227,7 @@ agent-slack message get "https://workspace.slack.com/archives/C123/p170000000000
 
 ### Wait for a reply (no polling)
 
-`message watch` blocks until someone else posts, prints the new messages, and exits. Use it right after `message send` instead of re-reading the thread in a loop:
+`message watch` blocks until a new message arrives, prints the new messages, and exits. Use it right after `message send` instead of re-reading the thread in a loop:
 
 ```bash
 # Wait for replies to a message (its thread; in DMs, top-level replies count too)
@@ -242,6 +242,8 @@ agent-slack message watch U05BRPTKL6A
 - Messages newer than `--after` (default: the target message) count, so a reply that landed between `send` and `watch` is returned immediately.
 - Messages from your own account count too, since a human sharing the account may be the one answering; pass `--exclude-self` to ignore them. After the first new message it waits `--settle` (default 3s) to collect quick follow-ups.
 - On `--timeout` (default 30m) it prints `{"timed_out": true, "messages": []}` and exits with code 2.
+
+For Claude Code, the skill bundles a [`slack-watcher`](skills/agent-slack/agents/slack-watcher.md) agent (Haiku) that runs `message watch` in the background and notifies the main session when a reply arrives. `scripts/install-skill.sh` installs it to `~/.claude/agents/`; with `npx skills add`, copy it there yourself.
 
 ### Compose a message (browser editor)
 

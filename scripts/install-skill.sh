@@ -33,6 +33,13 @@ install_one() {
 install_one "${HOME}/.agents/skills"   # Codex, Gemini CLI, OpenCode
 install_one "${HOME}/.claude/skills"   # Claude Code
 
+# Claude Code subagents bundled with the skill (e.g. slack-watcher).
+if [[ -d "${SRC}/agents" ]]; then
+  mkdir -p "${HOME}/.claude/agents"
+  cp "${SRC}"/agents/*.md "${HOME}/.claude/agents/"
+  echo "Installed Claude Code agents to: ${HOME}/.claude/agents"
+fi
+
 echo ""
 echo "Tip: For more agents, use: npx skills add stablyai/agent-slack"
 
