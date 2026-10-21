@@ -4,8 +4,10 @@ import { getUserAgent } from "../lib/version.ts";
 import {
   MAX_RATE_LIMIT_RETRIES,
   parseRetryAfterSec,
+  SlackRateLimitError,
   waitOutRateLimit,
   webClientRetryAfterSec,
+  withDefaultRetryAfter,
 } from "./rate-limit.ts";
 
 export type SlackAuth =
@@ -54,15 +56,22 @@ function isAbortOrTimeoutError(error: unknown): boolean {
 }
 
 /**
- * WebClient uses `globalThis.fetch`, which already honors HTTPS_PROXY (natively under Bun,
- * via installProxyDispatcher under Node); only the Bun keychain CA needs threading through.
+ * WebClient's fetch: `globalThis.fetch` already honors HTTPS_PROXY (natively under Bun,
+ * via installProxyDispatcher under Node), so this only threads the Bun keychain CA
+ * through and gives every 429 a Retry-After WebClient can parse.
  */
-function getWebClientFetch(): FetchFunction | undefined {
+export function getWebClientFetch(baseFetch: typeof fetch = fetch): FetchFunction {
   const tlsOption = getKeychainTlsOption();
-  if (!("tls" in tlsOption)) {
-    return undefined;
-  }
-  return (input, init) => fetch(input, { ...init, ...tlsOption });
+  return async (input, init) =>
+    withDefaultRetryAfter(await baseFetch(input, { ...init, ...tlsOption }));
+}
+
+function httpError(method: string, status: number): Error {
+  const message = `Slack HTTP ${status} calling ${method}`;
+  // Only reached for a 429 once the retries are spent.
+  return status === 429
+    ? new SlackRateLimitError({ method, retryAfterSec: 0, message })
+    : new Error(message);
 }
 
 export class SlackApiClient {
@@ -226,7 +235,7 @@ export class SlackApiClient {
 
     const data: unknown = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(`Slack HTTP ${response.status} calling ${input.method}`);
+      throw httpError(input.method, response.status);
     }
     if (!isRecord(data) || data.ok !== true) {
       const error = isRecord(data) && typeof data.error === "string" ? data.error : null;
@@ -285,8 +294,15 @@ export class SlackApiClient {
       >;
     } catch (error) {
       const retryAfterSec = webClientRetryAfterSec(error);
-      if (retryAfterSec === undefined || attempt >= MAX_RATE_LIMIT_RETRIES) {
+      if (retryAfterSec === undefined) {
         throw error;
+      }
+      if (attempt >= MAX_RATE_LIMIT_RETRIES) {
+        throw new SlackRateLimitError({
+          method: input.method,
+          retryAfterSec,
+          message: `Slack API call ${input.method} was still rate limited after ${MAX_RATE_LIMIT_RETRIES} retries.`,
+        });
       }
       await waitOutRateLimit({
         method: input.method,
@@ -352,7 +368,7 @@ export class SlackApiClient {
 
     const data: unknown = await response.json().catch(() => ({}));
     if (!response.ok) {
-      throw new Error(`Slack HTTP ${response.status} calling ${input.method}`);
+      throw httpError(input.method, response.status);
     }
     if (!isRecord(data) || data.ok !== true) {
       const error = isRecord(data) && typeof data.error === "string" ? data.error : null;

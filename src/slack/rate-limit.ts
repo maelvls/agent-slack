@@ -12,6 +12,29 @@ const DEFAULT_SLACK_RATE_LIMIT_MAX_WAIT_MS = 60_000;
 
 export const MAX_RATE_LIMIT_RETRIES = 3;
 
+// Wait used when a 429 has no usable Retry-After.
+const DEFAULT_RETRY_AFTER_SEC = 5;
+
+/**
+ * Thrown whenever a call gives up on a 429: the wait exceeds the max (including a
+ * per-call `maxRateLimitWaitMs: 0`) or the retries ran out, on either transport.
+ */
+export class SlackRateLimitError extends Error {
+  readonly method: string;
+  readonly retryAfterSec: number;
+
+  constructor(input: { method: string; retryAfterSec: number; message: string }) {
+    super(input.message);
+    this.name = "SlackRateLimitError";
+    this.method = input.method;
+    this.retryAfterSec = input.retryAfterSec;
+  }
+}
+
+export function isSlackRateLimitError(error: unknown): error is SlackRateLimitError {
+  return error instanceof SlackRateLimitError;
+}
+
 function getSlackRateLimitMaxWaitMs(): number {
   const raw = process.env.AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS?.trim();
   if (!raw) {
@@ -28,11 +51,32 @@ function getSlackRateLimitMaxWaitMs(): number {
 // which would slip past the max-wait check and retry immediately.
 export function parseRetryAfterSec(header: string | null): number {
   const parsed = Number(header ?? "");
-  return header?.trim() && Number.isFinite(parsed) ? parsed : 5;
+  return header?.trim() && Number.isFinite(parsed) ? parsed : DEFAULT_RETRY_AFTER_SEC;
 }
 
-// WebClient only raises a coded RateLimitedError when the 429 carries a numeric
-// Retry-After (which Slack always sends); anything else is not retried.
+/**
+ * WebClient only raises a coded RateLimitedError when a 429's Retry-After parses as an
+ * integer; otherwise it throws a plain, uncoded Error that can't be told apart without
+ * matching its message. Fill in the default on the response so every 429 reaches
+ * WebClient's coded path. Other responses pass through untouched.
+ */
+export function withDefaultRetryAfter(response: Response): Response {
+  if (
+    response.status !== 429 ||
+    !Number.isNaN(Number.parseInt(response.headers.get("Retry-After") ?? "", 10))
+  ) {
+    return response;
+  }
+  const headers = new Headers(response.headers);
+  headers.set("Retry-After", String(DEFAULT_RETRY_AFTER_SEC));
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+// WebClient raises a coded RateLimitedError for a 429 (see withDefaultRetryAfter).
 export function webClientRetryAfterSec(error: unknown): number | undefined {
   return typeof error === "object" &&
     error !== null &&
@@ -48,10 +92,12 @@ function slackRateLimitError(input: {
   method: string;
   retryAfterSec: number;
   maxWaitMs: number;
-}): Error {
-  return new Error(
-    `Slack API call ${input.method} was rate limited; retry-after ${input.retryAfterSec}s exceeds AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS=${input.maxWaitMs}.`,
-  );
+}): SlackRateLimitError {
+  return new SlackRateLimitError({
+    method: input.method,
+    retryAfterSec: input.retryAfterSec,
+    message: `Slack API call ${input.method} was rate limited; retry-after ${input.retryAfterSec}s exceeds AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS=${input.maxWaitMs}.`,
+  });
 }
 
 function pluralSeconds(n: number): string {

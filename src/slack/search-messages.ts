@@ -101,6 +101,9 @@ export async function searchMessagesViaSearchApi(
       continue;
     }
 
+    if (!passesContentTypeFilter(full, input.contentType)) {
+      continue;
+    }
     if (downloadsDir) {
       await downloadFilesForMessage({
         auth: input.auth,
@@ -114,9 +117,6 @@ export async function searchMessagesViaSearchApi(
       maxBodyChars: input.maxContentChars,
       downloadedPaths,
     });
-    if (!passesContentTypeFilter(compact, input.contentType)) {
-      continue;
-    }
     resolvedMessages.push(full);
     out.push(toSearchCompactMessage(compact, ref.permalink));
     if (out.length >= input.limit) {
@@ -234,6 +234,9 @@ export async function searchMessagesInChannelsFallback(
           continue;
         }
 
+        if (!passesContentTypeFilter(summary, input.contentType)) {
+          continue;
+        }
         if (downloadsDir) {
           await downloadFilesForMessage({
             auth: input.auth,
@@ -247,9 +250,6 @@ export async function searchMessagesInChannelsFallback(
           maxBodyChars: input.maxContentChars,
           downloadedPaths,
         });
-        if (!passesContentTypeFilter(compact, input.contentType)) {
-          continue;
-        }
 
         matchedSummaries.push(summary);
         results.push(toSearchCompactMessage(compact));
@@ -298,7 +298,15 @@ export async function searchMessagesInChannelsFallback(
   };
 }
 
-export function passesContentTypeFilter(m: CompactSlackMessage, contentType: ContentType): boolean {
+/**
+ * Decide from the message's own file metadata, not from what got downloaded:
+ * with --no-download the compact output has no files, and filtering before
+ * downloading means files of dropped messages are never fetched.
+ */
+export function passesContentTypeFilter(
+  m: { files?: { mode?: string; mimetype?: string }[] },
+  contentType: ContentType,
+): boolean {
   if (contentType === "any") {
     return true;
   }
@@ -317,7 +325,11 @@ export function passesContentTypeFilter(m: CompactSlackMessage, contentType: Con
     return (m.files ?? []).some((f) => f.mode === "snippet");
   }
   if (contentType === "image") {
-    return (m.files ?? []).some((f) => String(f.mimetype ?? "").startsWith("image/"));
+    return (m.files ?? []).some((f) =>
+      String(f.mimetype ?? "")
+        .toLowerCase()
+        .startsWith("image/"),
+    );
   }
   return true;
 }

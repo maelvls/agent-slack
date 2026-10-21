@@ -1,6 +1,7 @@
 import type { SlackApiClient } from "./client.ts";
 import { asArray, getString, isRecord } from "../lib/object-type-guards.ts";
 import { cacheChannelIds, getCachedChannelId } from "./channel-cache.ts";
+import { isSlackRateLimitError } from "./rate-limit.ts";
 import { parseSlackChannelUrl } from "./url.ts";
 
 const DEFAULT_CONVERSATION_TYPES = "public_channel,private_channel,im,mpim";
@@ -110,7 +111,7 @@ export async function resolveChannelId(client: SlackApiClient, input: string): P
           { maxRateLimitWaitMs: 0 },
         );
       } catch (err) {
-        if (isRateLimitError(err)) {
+        if (isSlackRateLimitError(err)) {
           throw new Error(
             `Could not resolve #${name}: search found no match and Slack rate limited ` +
               "conversations.list. Pass the channel ID (C…/D…/G…) or a channel URL instead.",
@@ -143,13 +144,6 @@ export async function resolveChannelId(client: SlackApiClient, input: string): P
   }
 
   throw new Error(`Could not resolve channel name: #${name}`);
-}
-
-function isRateLimitError(err: unknown): boolean {
-  if (isRecord(err) && err.code === "slack_webapi_rate_limited_error") {
-    return true;
-  }
-  return err instanceof Error && /rate limited/i.test(err.message);
 }
 
 /**

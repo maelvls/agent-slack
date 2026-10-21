@@ -159,13 +159,15 @@ describe("passesContentTypeFilter with failed downloads", () => {
     expect(passesContentTypeFilter(compact, "file")).toBe(true);
   });
 
-  test("message without download entry has no files and passes text filter", () => {
+  test("raw message is classified by its files even when nothing was downloaded", () => {
     const msg = makeMessage([
       { id: "F1", mimetype: "image/png", url_private: "https://example.com/f1" },
     ]);
-    const compact = toCompactMessage(msg, { downloadedPaths: {} });
-    expect(passesContentTypeFilter(compact, "text")).toBe(true);
-    expect(passesContentTypeFilter(compact, "image")).toBe(false);
+    // With --no-download the compact output has no files; the filter runs on the
+    // raw message so the image is still recognized.
+    expect(toCompactMessage(msg, { downloadedPaths: {} }).files).toBeUndefined();
+    expect(passesContentTypeFilter(msg, "text")).toBe(false);
+    expect(passesContentTypeFilter(msg, "image")).toBe(true);
   });
 });
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { normalizeChannelInput, resolveChannelId } from "../src/slack/channels.ts";
 import type { SlackApiClient } from "../src/slack/client.ts";
+import { SlackRateLimitError } from "../src/slack/rate-limit.ts";
 
 const WORKSPACE = "https://acme.slack.com";
 
@@ -139,9 +140,12 @@ describe("resolveChannelId", () => {
           response_metadata: { next_cursor: "page2" },
         };
       }
-      throw new Error(
-        "Slack API call conversations.list was rate limited; retry-after 30s exceeds AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS=0.",
-      );
+      throw new SlackRateLimitError({
+        method,
+        retryAfterSec: 30,
+        message:
+          "Slack API call conversations.list was rate limited; retry-after 30s exceeds AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS=0.",
+      });
     });
     await expect(resolveChannelId(client, "#nope")).rejects.toThrow(
       /Pass the channel ID .* or a channel URL instead/,
@@ -149,6 +153,18 @@ describe("resolveChannelId", () => {
 
     const second = createClient(noSearchHits);
     expect(await resolveChannelId(second.client, "#random")).toBe("C0000000002");
+  });
+
+  test("other conversations.list errors propagate unchanged, even if they mention rate limits", async () => {
+    const { client } = createClient((method) => {
+      if (method === "search.messages") {
+        return { messages: { matches: [] } };
+      }
+      throw new Error("ratelimited: rate limited by upstream proxy");
+    });
+    await expect(resolveChannelId(client, "#nope")).rejects.toThrow(
+      "ratelimited: rate limited by upstream proxy",
+    );
   });
 
   test("without a known workspace nothing is cached", async () => {

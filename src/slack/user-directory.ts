@@ -183,7 +183,8 @@ async function fillDirectory(
       if (state.users.length === 0) {
         throw err;
       }
-      // Usually a rate limit; keep what we have and resume next time.
+      // Usually a rate limit (sometimes a timeout); either way the pages fetched so
+      // far are kept and the walk resumes from state.next_cursor next time.
       return;
     }
     for (const m of asArray(resp.members).filter(isRecord)) {
