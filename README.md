@@ -76,6 +76,7 @@ agent-slack
 ├── message
 │   ├── get   <target> [ts]        # fetch 1 message (+ thread meta )
 │   ├── list  <target> [ts]        # fetch thread or recent channel messages
+│   ├── watch <target> [ts]        # block until someone replies, then print it
 │   ├── send  <target> [text]      # send / reply / schedule (supports --attach, --blocks)
 │   ├── scheduled
 │   │   ├── list                   # list pending scheduled messages
@@ -223,6 +224,24 @@ Optional:
 # Include reactions + which users reacted
 agent-slack message get "https://workspace.slack.com/archives/C123/p1700000000000000" --include-reactions
 ```
+
+### Wait for a reply (no polling)
+
+`message watch` blocks until someone else posts, prints the new messages, and exits. Use it right after `message send` instead of re-reading the thread in a loop:
+
+```bash
+# Wait for replies to a message (its thread; in DMs, top-level replies count too)
+agent-slack message watch "https://workspace.slack.com/archives/C123/p1700000000000000"
+
+# Channel + ts, or a bare channel/DM to wait for the next top-level post
+agent-slack message watch C123 1770165109.628379 --timeout 2h
+agent-slack message watch U05BRPTKL6A
+```
+
+- It listens on Slack's live websocket (`rtm.connect`, works with imported browser credentials) and falls back to polling (`--poll-interval`, default 15s) when that is unavailable.
+- Messages newer than `--after` (default: the target message) count, so a reply that landed between `send` and `watch` is returned immediately.
+- Your own messages are ignored unless you pass `--include-self`. After the first new message it waits `--settle` (default 3s) to collect quick follow-ups.
+- On `--timeout` (default 30m) it prints `{"timed_out": true, "messages": []}` and exits with code 2.
 
 ### Compose a message (browser editor)
 
