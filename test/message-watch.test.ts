@@ -267,6 +267,19 @@ describe("waitForNewMessages offline", () => {
     expect(logs.filter((l) => l.includes("fetch failed"))).toHaveLength(1);
   });
 
+  test("with no timeout (Infinity), still returns once a reply arrives", async () => {
+    let calls = 0;
+    const result = await waitForNewMessages({
+      ...base,
+      timeoutMs: Number.POSITIVE_INFINITY,
+      settleMs: 5,
+      after: "100.0",
+      fetchNew: async () => (++calls < 3 ? [] : [msg("101.0")]),
+      accept: () => true,
+    });
+    expect(result).toEqual({ messages: [msg("101.0")], timedOut: false });
+  });
+
   test("times out normally when the network never comes back", async () => {
     const result = await waitForNewMessages({
       ...base,

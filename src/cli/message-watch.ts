@@ -123,7 +123,7 @@ export async function retryWhileTransient<T>(input: {
       if (!warned) {
         warned = true;
         input.log?.(
-          `${input.what} failed (${errorText(err)}); retrying every ${Math.round(input.intervalMs / 1000)}s until the timeout.`,
+          `${input.what} failed (${errorText(err)}); retrying every ${Math.round(input.intervalMs / 1000)}s.`,
         );
       }
       await new Promise((r) => setTimeout(r, Math.min(input.intervalMs, remaining)));
@@ -223,7 +223,7 @@ export async function waitForNewMessages(input: {
       if (!offline) {
         offline = true;
         input.log?.(
-          `Fetching new messages failed (${errorText(err)}); retrying every ${Math.round(input.pollIntervalMs / 1000)}s until the timeout.`,
+          `Fetching new messages failed (${errorText(err)}); retrying every ${Math.round(input.pollIntervalMs / 1000)}s.`,
         );
       }
       return undefined;
@@ -394,7 +394,10 @@ export async function handleMessageWatch(input: {
   log?: (message: string) => void;
 }): Promise<{ payload: Record<string, unknown>; timedOut: boolean }> {
   const log = input.log ?? ((m: string) => console.error(m));
-  const timeoutMs = parseWatchDuration(input.options.timeout ?? "30m", "--timeout");
+  // No --timeout means wait for as long as it takes.
+  const timeoutMs = input.options.timeout
+    ? parseWatchDuration(input.options.timeout, "--timeout")
+    : Number.POSITIVE_INFINITY;
   const settleMs = parseWatchDuration(input.options.settle ?? "3s", "--settle");
   const pollIntervalMs = Math.max(
     5000,
@@ -424,9 +427,10 @@ export async function handleMessageWatch(input: {
     .filter(Boolean)
     .join(" + ");
   const since = new Date(Number.parseFloat(after) * 1000).toLocaleString();
-  log(
-    `Waiting up to ${input.options.timeout ?? "30m"} for messages in ${scope.channelId} (${where}) posted after ${since}; exits ${WATCH_TIMEOUT_EXIT_CODE} on timeout.`,
-  );
+  const howLong = input.options.timeout
+    ? `up to ${input.options.timeout}`
+    : "with no timeout (--timeout to set one)";
+  log(`Waiting ${howLong} for messages in ${scope.channelId} (${where}) posted after ${since}.`);
 
   const fetchNew = async (since: string): Promise<SlackMessageSummary[]> => {
     const out: SlackMessageSummary[] = [];
