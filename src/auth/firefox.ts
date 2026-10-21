@@ -7,6 +7,7 @@ import {
   pickCandidatesByProfile,
   queryReadonlySqlite,
 } from "./firefox-profile.ts";
+import { uncompressSnappy } from "../lib/leveldb-reader.ts";
 
 type FirefoxTeam = { url: string; name?: string; token: string };
 
@@ -153,6 +154,35 @@ function getLocalStorageDirs(profilePath: string): string[] {
   return candidates;
 }
 
+type LocalStorageRow = { key: string; value: unknown; compression_type?: unknown };
+
+// Firefox's LSNG schema Snappy-compresses values when that saves space.
+const LS_COMPRESSION_SNAPPY = 1;
+
+async function queryLocalConfigRows(dbPath: string): Promise<LocalStorageRow[]> {
+  const where = "from data where key in ('localConfig_v2', 'localConfig_v3') order by key desc";
+  try {
+    return (await queryReadonlySqlite(
+      dbPath,
+      `select key, value, compression_type ${where}`,
+    )) as LocalStorageRow[];
+  } catch {
+    // Older profiles predate the compression_type column.
+    return (await queryReadonlySqlite(dbPath, `select key, value ${where}`)) as LocalStorageRow[];
+  }
+}
+
+export function decodeLocalStorageValue(row: LocalStorageRow): unknown {
+  if (Number(row.compression_type) === LS_COMPRESSION_SNAPPY && row.value instanceof Uint8Array) {
+    try {
+      return uncompressSnappy(row.value);
+    } catch {
+      return row.value;
+    }
+  }
+  return row.value;
+}
+
 async function extractTeamsFromProfile(
   profilePath: string,
 ): Promise<{ teams: FirefoxTeam[]; sourcePath: string } | null> {
@@ -165,13 +195,11 @@ async function extractTeamsFromProfile(
 
     const copied = await copySqliteForRead(dbPath);
     try {
-      const rows = (await queryReadonlySqlite(
-        copied.copyPath,
-        "select key, value from data where key in ('localConfig_v2', 'localConfig_v3') order by key desc",
-      )) as { key: string; value: unknown }[];
+      const rows = await queryLocalConfigRows(copied.copyPath);
 
       for (const row of rows) {
-        const cfg = parseJsonObjectFromValue(row.value);
+        const value = decodeLocalStorageValue(row);
+        const cfg = parseJsonObjectFromValue(value);
         const teamsRaw =
           cfg && typeof cfg.teams === "object" && cfg.teams !== null ? cfg.teams : {};
         const parsedTeams = Object.values(teamsRaw)
@@ -181,7 +209,7 @@ async function extractTeamsFromProfile(
           return { teams: parsedTeams, sourcePath: dbPath };
         }
 
-        const rawTeams = extractTeamsFromRawText(toStringValue(row.value));
+        const rawTeams = extractTeamsFromRawText(toStringValue(value));
         if (rawTeams.length > 0) {
           return { teams: rawTeams, sourcePath: dbPath };
         }

@@ -1,11 +1,11 @@
 // Desktop auth extraction approach inspired by:
 // - slacktokens: https://github.com/hraftery/slacktokens
-import { cp, mkdir, rm, unlink } from "node:fs/promises";
+import { cp, mkdtemp, readdir, rm, stat, unlink } from "node:fs/promises";
 import { existsSync, readdirSync, copyFileSync, unlinkSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { homedir, platform, tmpdir } from "node:os";
 import { join } from "node:path";
-import { findKeysContaining } from "../lib/leveldb-reader.js";
+import { findKeysContaining, latestLiveEntries, type LevelDBEntry } from "../lib/leveldb-reader.js";
 import { isRecord } from "../lib/object-type-guards.ts";
 import { queryReadonlySqlite } from "./firefox-profile.ts";
 import { decryptChromiumCookieValue } from "./chromium-cookie.ts";
@@ -136,10 +136,66 @@ function toDesktopTeam(value: unknown): DesktopTeam | null {
   return { url, name, token };
 }
 
+const SNAPSHOT_PREFIX = "agent-slack-leveldb-";
+// Where snapshots used to live; swept so copies left by killed runs don't linger.
+const LEGACY_SNAPSHOT_DIR = join(homedir(), ".config", "agent-slack", "cache", "leveldb-snapshots");
+const STALE_SNAPSHOT_MS = 10 * 60_000;
+
+/**
+ * Snapshots hold xoxc tokens. A run killed mid-read (e.g. by the command
+ * watchdog's process.exit) skips its cleanup, so remove leftovers from earlier runs.
+ */
+export async function sweepStaleLevelDbSnapshots(
+  input: { tmpRoot?: string; legacyDir?: string; now?: number } = {},
+): Promise<void> {
+  const now = input.now ?? Date.now();
+  const roots = [
+    { dir: input.tmpRoot ?? tmpdir(), prefix: SNAPSHOT_PREFIX },
+    { dir: input.legacyDir ?? LEGACY_SNAPSHOT_DIR, prefix: "" },
+  ];
+  for (const { dir, prefix } of roots) {
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch {
+      continue;
+    }
+    for (const name of names.filter((n) => n.startsWith(prefix))) {
+      const path = join(dir, name);
+      try {
+        if (now - (await stat(path)).mtimeMs > STALE_SNAPSHOT_MS) {
+          await rm(path, { recursive: true, force: true });
+        }
+      } catch {
+        // ignore
+      }
+    }
+  }
+}
+
+/** Newest live localConfig_v2/v3 value, honoring sequence numbers and deletions. */
+export function pickNewestLocalConfig(entries: LevelDBEntry[]): Buffer | null {
+  const localConfigV2 = Buffer.from("localConfig_v2");
+  const localConfigV3 = Buffer.from("localConfig_v3");
+  let best: LevelDBEntry | null = null;
+  for (const entry of latestLiveEntries(entries)) {
+    if (!entry.key.includes(localConfigV2) && !entry.key.includes(localConfigV3)) {
+      continue;
+    }
+    if (entry.value.length === 0) {
+      continue;
+    }
+    if (!best || (entry.seq ?? -1n) >= (best.seq ?? -1n)) {
+      best = entry;
+    }
+  }
+  return best?.value ?? null;
+}
+
+/** Copies the LevelDB dir to `<returned dir>/leveldb`; remove the returned dir when done. */
 async function snapshotLevelDb(srcDir: string): Promise<string> {
-  const base = join(homedir(), ".config", "agent-slack", "cache", "leveldb-snapshots");
-  const dest = join(base, `${Date.now()}`);
-  await mkdir(base, { recursive: true });
+  const root = await mkdtemp(join(tmpdir(), SNAPSHOT_PREFIX));
+  const dest = join(root, "leveldb");
   let useNodeCopy = !IS_MACOS;
   if (IS_MACOS) {
     try {
@@ -159,7 +215,7 @@ async function snapshotLevelDb(srcDir: string): Promise<string> {
   } catch {
     // ignore
   }
-  return dest;
+  return root;
 }
 
 function parseLocalConfig(raw: Buffer): unknown {
@@ -212,31 +268,13 @@ async function extractTeamsFromSlackLevelDb(leveldbDir: string): Promise<Desktop
     throw new Error(`Slack LevelDB not found: ${leveldbDir}`);
   }
 
+  await sweepStaleLevelDbSnapshots();
   const snap = await snapshotLevelDb(leveldbDir);
 
   try {
     // Use pure JS LevelDB reader - search for localConfig entries
-    const localConfigV2 = Buffer.from("localConfig_v2");
-    const localConfigV3 = Buffer.from("localConfig_v3");
-
-    const entries = await findKeysContaining(snap, Buffer.from("localConfig_v"));
-
-    let configBuf: Buffer | null = null;
-    let configRank = -1n;
-    for (const entry of entries) {
-      if (entry.key.includes(localConfigV2) || entry.key.includes(localConfigV3)) {
-        if (entry.value && entry.value.length > 0) {
-          let rank = 0n;
-          if (entry.key.length >= 8) {
-            rank = entry.key.readBigUInt64LE(entry.key.length - 8);
-          }
-          if (!configBuf || rank >= configRank) {
-            configBuf = entry.value;
-            configRank = rank;
-          }
-        }
-      }
-    }
+    const entries = await findKeysContaining(join(snap, "leveldb"), Buffer.from("localConfig_v"));
+    const configBuf = pickNewestLocalConfig(entries);
 
     if (!configBuf) {
       throw new Error("Slack LevelDB did not contain localConfig_v2/v3");

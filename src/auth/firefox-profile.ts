@@ -195,11 +195,17 @@ export function pickCandidatesByProfile(
 
 export async function copySqliteForRead(
   dbPath: string,
+  tmpRoot: string = tmpdir(),
 ): Promise<{ copyPath: string; cleanup: () => Promise<void> }> {
-  const tmpPath = await mkdtemp(join(tmpdir(), "agent-slack-firefox-"));
+  const tmpPath = await mkdtemp(join(tmpRoot, "agent-slack-firefox-"));
   const base = dbPath.split("/").pop() || "db.sqlite";
   const copyPath = join(tmpPath, base);
-  await copyFile(dbPath, copyPath);
+  try {
+    await copyFile(dbPath, copyPath);
+  } catch (err) {
+    await rm(tmpPath, { recursive: true, force: true }).catch(() => {});
+    throw err;
+  }
 
   // Firefox keeps recent commits in WAL/SHM while running; copy them with the DB snapshot.
   for (const suffix of ["-wal", "-shm"]) {

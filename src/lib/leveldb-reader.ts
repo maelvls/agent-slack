@@ -26,7 +26,38 @@ const LOG_RECORD_LAST = 4;
 export type LevelDBEntry = {
   key: Buffer;
   value: Buffer;
+  /** Key without the SSTable internal-key trailer; equals `key` for log records. */
+  userKey?: Buffer;
+  /** LevelDB sequence number; comparable across SSTables and logs. */
+  seq?: bigint;
+  /** A deletion tombstone; `value` is empty. */
+  deleted?: boolean;
 };
+
+const VALUE_TYPE_DELETION = 0;
+const VALUE_TYPE_VALUE = 1;
+
+/**
+ * SSTable keys are internal keys: user key + 8-byte trailer (seq << 8 | type).
+ * Only trust the trailer when its type byte is a known value type.
+ */
+function withInternalKeyInfo(entry: LevelDBEntry): LevelDBEntry {
+  const { key } = entry;
+  if (key.length < 8) {
+    return entry;
+  }
+  const tag = key.readBigUInt64LE(key.length - 8);
+  const type = Number(tag & 0xffn);
+  if (type !== VALUE_TYPE_DELETION && type !== VALUE_TYPE_VALUE) {
+    return entry;
+  }
+  return {
+    ...entry,
+    userKey: key.subarray(0, -8),
+    seq: tag >> 8n,
+    deleted: type === VALUE_TYPE_DELETION,
+  };
+}
 
 /**
  * Read a varint from buffer at offset. Returns [value, bytesRead].
@@ -80,6 +111,12 @@ function readVarint64(buf: Buffer, offset: number): [number, number] {
 function getSnappyUncompressedLength(compressed: Buffer): number {
   const [length] = readVarint(compressed, 0);
   return length;
+}
+
+/** Uncompress a raw (unframed) Snappy buffer. */
+export function uncompressSnappy(compressed: Uint8Array): Buffer {
+  const buf = Buffer.from(compressed);
+  return Buffer.from(snappyUncompress(buf, getSnappyUncompressedLength(buf)));
 }
 
 /**
@@ -232,7 +269,7 @@ async function parseSSTable(filePath: string): Promise<LevelDBEntry[]> {
         const block = decompressBlock(blockData, compressionType);
 
         const blockEntries = parseDataBlock(block);
-        entries.push(...blockEntries);
+        entries.push(...blockEntries.map(withInternalKeyInfo));
       } catch {
         // Skip malformed blocks
         continue;
@@ -324,7 +361,8 @@ function parseLogBatch(batch: Buffer, entries: LevelDBEntry[]): void {
     return;
   }
 
-  // Skip sequence (8 bytes) and count (4 bytes)
+  // Each record in the batch takes the next sequence number, starting at the batch's.
+  let seq = batch.readBigUInt64LE(0);
   let offset = 12;
 
   while (offset < batch.length) {
@@ -332,7 +370,7 @@ function parseLogBatch(batch: Buffer, entries: LevelDBEntry[]): void {
       const recordType = batch[offset]!;
       offset++;
 
-      if (recordType === 1) {
+      if (recordType === VALUE_TYPE_VALUE) {
         // Value record
         const [keyLen, n1] = readVarint(batch, offset);
         offset += n1;
@@ -343,11 +381,16 @@ function parseLogBatch(batch: Buffer, entries: LevelDBEntry[]): void {
         const value = batch.subarray(offset, offset + valueLen);
         offset += valueLen;
 
-        entries.push({ key: Buffer.from(key), value: Buffer.from(value) });
-      } else if (recordType === 0) {
-        // Deletion record - skip
+        const keyCopy = Buffer.from(key);
+        entries.push({ key: keyCopy, value: Buffer.from(value), userKey: keyCopy, seq });
+        seq++;
+      } else if (recordType === VALUE_TYPE_DELETION) {
         const [keyLen, n1] = readVarint(batch, offset);
-        offset += n1 + keyLen;
+        offset += n1;
+        const key = Buffer.from(batch.subarray(offset, offset + keyLen));
+        offset += keyLen;
+        entries.push({ key, value: Buffer.alloc(0), userKey: key, seq, deleted: true });
+        seq++;
       } else {
         // Unknown record type
         break;
@@ -387,6 +430,23 @@ export async function readChromiumLevelDB(dir: string): Promise<LevelDBEntry[]> 
   }
 
   return entries;
+}
+
+/**
+ * Collapse entries to the newest one per user key (by sequence number; entries
+ * without one rank oldest, later ones winning ties) and drop keys whose newest
+ * entry is a deletion.
+ */
+export function latestLiveEntries(entries: LevelDBEntry[]): LevelDBEntry[] {
+  const newest = new Map<string, LevelDBEntry>();
+  for (const entry of entries) {
+    const id = (entry.userKey ?? entry.key).toString("latin1");
+    const current = newest.get(id);
+    if (!current || (entry.seq ?? -1n) >= (current.seq ?? -1n)) {
+      newest.set(id, entry);
+    }
+  }
+  return [...newest.values()].filter((entry) => !entry.deleted);
 }
 
 /**

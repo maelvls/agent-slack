@@ -8,6 +8,9 @@ import { getKeychainTimeoutMs } from "./keychain.ts";
 
 const IS_MACOS = process.platform === "darwin";
 const IS_LINUX = process.platform === "linux";
+// PowerShell's cold start alone can take a few seconds; still bound it so a hung
+// DPAPI call can't stall the import indefinitely.
+export const DPAPI_TIMEOUT_MS = 15_000;
 
 export function getSafeStoragePasswords(prefix: string): string[] {
   if (IS_MACOS) {
@@ -127,6 +130,7 @@ export function decryptCookieWindows(encrypted: Buffer, slackDataDir: string): s
     ].join("; ");
     execFileSync("powershell", ["-ExecutionPolicy", "Bypass", "-Command", psCmd], {
       stdio: "pipe",
+      timeout: DPAPI_TIMEOUT_MS,
     });
     if (!existsSync(decKeyFile)) {
       throw new Error("DPAPI decryption failed: PowerShell did not produce the decrypted key file");
