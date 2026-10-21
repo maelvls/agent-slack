@@ -10,6 +10,7 @@ import {
   type MessageCommandOptions,
 } from "./message-actions.ts";
 import { composeMessage } from "./compose-actions.ts";
+import { registerMessageWatchCommand } from "./message-watch-command.ts";
 import { registerScheduledMessageCommand } from "./message-scheduled-command.ts";
 import { registerMessageDraftCommand } from "./message-draft-command.ts";
 import { isSafeModeEnabled, redirectSendToDraft, safeModeBlockedError } from "./safe-mode.ts";
@@ -161,6 +162,8 @@ export function registerMessageCommand(input: { program: Command; ctx: CliContex
       process.exitCode = 1;
     }
   });
+
+  registerMessageWatchCommand({ messageCmd, ctx: input.ctx });
 
   messageCmd
     .command("edit")

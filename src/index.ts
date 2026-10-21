@@ -28,6 +28,10 @@ function shouldStartCommandWatchdog(args: string[]): boolean {
   if (command === "message" && subcommand === "draft") {
     return false;
   }
+  // Long-running by design; enforces its own --timeout.
+  if (command === "message" && subcommand === "watch") {
+    return false;
+  }
   return true;
 }
 

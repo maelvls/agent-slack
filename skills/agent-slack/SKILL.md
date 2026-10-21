@@ -38,6 +38,9 @@ agent-slack user get "Jane Doe"     # also U123, @handle, or email; lists candid
 agent-slack message send U123 "text"
 agent-slack user dm-open U123       # just the DM channel ID, e.g. to list its history
 
+# Wait for a reply instead of polling: blocks, then prints only the new messages (exit 2 on timeout)
+agent-slack message watch "https://<ws>.slack.com/archives/C123/p1790000000123456" --timeout 1h
+
 # Search (Slack query syntax works: from:@handle, in:#channel, before:/after:)
 agent-slack search messages "query" --channel C123 --user @handle --after 2026-01-01 --limit 20
 ```
@@ -50,6 +53,7 @@ Pitfalls:
 - Bot messages have no `author.user_id`; use `.author.user_id // .author.bot_id` in jq.
 - Don't wrap calls in `timeout` (absent on macOS by default). The CLI has its own watchdog, set with `AGENT_SLACK_COMMAND_TIMEOUT_MS`.
 - Avoid paging `user list` to find someone; `user search` is one call.
+- To await an answer after `message send`, run `message watch <permalink>` with the `permalink` that `send` printed (as a background task if your harness supports it) rather than re-running `message list`. Replies posted before the watch started are still returned; your own messages are ignored.
 
 ## Safety
 
