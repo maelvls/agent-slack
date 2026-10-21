@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import type { CliContext } from "./context.ts";
 import { cancelScheduledMessage, listScheduledMessages } from "./message-scheduled-actions.ts";
+import { refuseUnderSafeMode } from "./safe-mode.ts";
 
 export function registerScheduledMessageCommand(input: {
   messageCmd: Command;
@@ -53,6 +54,9 @@ export function registerScheduledMessageCommand(input: {
         { workspace?: string; channel: string },
       ];
       try {
+        // Same footing as `message delete`: it removes a pending post, possibly
+        // one a human scheduled.
+        refuseUnderSafeMode(input.messageCmd, "message scheduled cancel");
         const payload = await cancelScheduledMessage({
           ctx: input.ctx,
           scheduledMessageId,

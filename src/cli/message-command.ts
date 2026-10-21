@@ -12,7 +12,7 @@ import {
 import { composeMessage } from "./compose-actions.ts";
 import { registerScheduledMessageCommand } from "./message-scheduled-command.ts";
 import { registerMessageDraftCommand } from "./message-draft-command.ts";
-import { isSafeModeEnabled, redirectSendToDraft, safeModeBlockedError } from "./safe-mode.ts";
+import { isSafeModeEnabled, redirectSendToDraft, refuseUnderSafeMode } from "./safe-mode.ts";
 import { addHiddenOptionAlias, collectOptionValue, pickPositionalOrFlag } from "./options.ts";
 import { isSlackTs, parseMsgTarget, resolveTargetArgs } from "./targets.ts";
 
@@ -195,9 +195,7 @@ export function registerMessageCommand(input: { program: Command; ctx: CliContex
         if (text === undefined) {
           throw new Error("Missing <text>: pass the new message text (or --text <text>)");
         }
-        if (safeModeActive()) {
-          throw safeModeBlockedError("edit");
-        }
+        refuseUnderSafeMode(input.program, "message edit");
         const payload = await editMessage({
           ctx: input.ctx,
           targetInput,
@@ -231,9 +229,7 @@ export function registerMessageCommand(input: { program: Command; ctx: CliContex
           positionals: [targetArg],
           channel: options.channel,
         });
-        if (safeModeActive()) {
-          throw safeModeBlockedError("delete");
-        }
+        refuseUnderSafeMode(input.program, "message delete");
         const payload = await deleteMessage({
           ctx: input.ctx,
           targetInput,
@@ -437,6 +433,8 @@ export function registerMessageCommand(input: { program: Command; ctx: CliContex
           { workspace?: string; channel?: string; ts?: string },
         ];
         try {
+          // Reactions are visible to everyone in the conversation.
+          refuseUnderSafeMode(input.program, `message react ${spec.action}`);
           const {
             target: targetInput,
             rest: [emoji],

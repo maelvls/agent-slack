@@ -30,8 +30,8 @@ describe("isSafeModeEnabled", () => {
 
 describe("safeModeBlockedError", () => {
   test("names the blocked action", () => {
-    expect(safeModeBlockedError("edit").message).toContain('"message edit" is blocked');
-    expect(safeModeBlockedError("delete").message).toContain('"message delete" is blocked');
+    expect(safeModeBlockedError("message edit").message).toContain('"message edit" is blocked');
+    expect(safeModeBlockedError("workflow run").message).toContain('"workflow run" is blocked');
   });
 });
 

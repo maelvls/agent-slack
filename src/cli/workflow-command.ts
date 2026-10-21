@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import type { CliContext } from "./context.ts";
+import { refuseUnderSafeMode } from "./safe-mode.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
 import { resolveChannelId } from "../slack/channels.ts";
 import {
@@ -117,6 +118,7 @@ export function registerWorkflowCommand(input: { program: Command; ctx: CliConte
     .action(async (...args) => {
       const [triggerId, options] = args as [string, WorkspaceOption & { channel: string }];
       try {
+        refuseUnderSafeMode(input.program, "workflow run");
         const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
         const payload = await input.ctx.withAutoRefresh({
           workspaceUrl,

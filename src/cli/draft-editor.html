@@ -924,7 +924,7 @@
             <span class="hint"><kbd id="modKey">&#8984;</kbd><kbd>Enter</kbd> to send</span>
           </div>
           <div style="display: flex; align-items: center; gap: 8px">
-            <button class="cancel-link" onclick="handleCancel()">Cancel</button>
+            <button class="cancel-link" id="cancelBtn" onclick="handleCancel()">Cancel</button>
             <button class="btn-send" id="sendBtn" onclick="handleSend()" disabled>
               <svg viewBox="0 0 20 20">
                 <path
@@ -961,6 +961,19 @@
     <script>
       // ─── Config ───
       const CONFIG = __DRAFT_CONFIG__;
+      // The session token comes only in the URL fragment handed to the browser,
+      // never in the served HTML, so a process that fetches this page cannot
+      // send. Kept in sessionStorage so a reload still works once it is
+      // stripped from the address bar.
+      const TOKEN = (() => {
+        const fromHash = new URLSearchParams(location.hash.slice(1)).get("token");
+        if (fromHash) {
+          sessionStorage.setItem("draftToken", fromHash);
+          history.replaceState(null, "", location.pathname + location.search);
+          return fromHash;
+        }
+        return sessionStorage.getItem("draftToken") || "";
+      })();
       const IS_MAC = /Mac|iPhone/.test(navigator.platform);
       const MOD = IS_MAC ? "metaKey" : "ctrlKey";
 
@@ -1690,7 +1703,7 @@
       // ─── Send button state ───
       function updateSendBtn() {
         const text = sourceMode ? sourceEditor.value.trim() : (editor.textContent || "").trim();
-        document.getElementById("sendBtn").disabled = !text;
+        document.getElementById("sendBtn").disabled = !text || !TOKEN;
       }
       editor.addEventListener("input", updateSendBtn);
 
@@ -1728,7 +1741,7 @@
       let sending = false;
 
       async function handleSend() {
-        if (sending) {
+        if (sending || !TOKEN) {
           return;
         }
         const text = sourceMode ? sourceEditor.value.trim() : htmlToMrkdwn(editor);
@@ -1745,7 +1758,7 @@
         try {
           const resp = await fetch("/send", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Draft-Token": CONFIG.token },
+            headers: { "Content-Type": "application/json", "X-Draft-Token": TOKEN },
             body: JSON.stringify({ text }),
           });
           const data = await resp.json();
@@ -1775,12 +1788,18 @@
 
       async function handleCancel() {
         try {
-          await fetch("/cancel", {
+          const resp = await fetch("/cancel", {
             method: "POST",
-            headers: { "Content-Type": "application/json", "X-Draft-Token": CONFIG.token },
+            headers: { "Content-Type": "application/json", "X-Draft-Token": TOKEN },
             body: "{}",
           });
-        } catch (_) {}
+          if (!resp.ok) {
+            throw new Error("The CLI rejected the request (" + resp.status + ")");
+          }
+        } catch (err) {
+          showOverlay("Failed to cancel", err.message, "error");
+          return;
+        }
         showOverlay("Draft cancelled", "You can close this tab.", "success");
       }
 
@@ -1795,6 +1814,17 @@
       // ─── Focus ───
       editor.focus();
       updateSendBtn();
+
+      // A tab opened from the printed URL (or one that lost sessionStorage) can't
+      // talk to the CLI, so say so rather than failing on Send or Cancel.
+      if (!TOKEN) {
+        document.getElementById("cancelBtn").disabled = true;
+        showOverlay(
+          "No editor session",
+          "This tab has no editor session; use the link the CLI opened in your browser.",
+          "error",
+        );
+      }
     </script>
   </body>
 </html>

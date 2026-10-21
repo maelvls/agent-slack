@@ -18,7 +18,11 @@ import { registerUpdateCommand } from "./cli/update-command.ts";
 import { registerUserCommand } from "./cli/user-command.ts";
 import { registerChannelCommand } from "./cli/channel-command.ts";
 import { registerWorkflowCommand } from "./cli/workflow-command.ts";
-import { backgroundUpdateCheck } from "./lib/update.ts";
+import {
+  backgroundUpdateCheck,
+  detectInstallMethod,
+  removeStaleBinaryBackup,
+} from "./lib/update.ts";
 
 installProxyDispatcher();
 
@@ -40,7 +44,7 @@ program
   .showSuggestionAfterError(true)
   .option(
     "--safe-mode",
-    'Human-in-the-loop enforcement: redirect "message send" to the draft editor and block "message edit"/"message delete" (also: AGENT_SLACK_SAFE_MODE=1)',
+    'Human-in-the-loop enforcement: redirect "message send" to the draft editor and block other commands visible to people (also: AGENT_SLACK_SAFE_MODE=1)',
   );
 
 maybeStartCommandWatchdog(process.argv.slice(2));
@@ -70,4 +74,10 @@ if (!process.argv.slice(2).length) {
 const [subcommand] = process.argv.slice(2);
 if (subcommand && subcommand !== "update") {
   backgroundUpdateCheck();
+  // A Windows self-update cannot delete the binary it replaced while that
+  // binary is running; remove the leftover `.bak` on a later run. (`update`
+  // itself clears it before replacing the binary.)
+  if (process.platform === "win32" && detectInstallMethod() === "binary") {
+    void removeStaleBinaryBackup();
+  }
 }

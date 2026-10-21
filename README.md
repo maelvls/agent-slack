@@ -288,9 +288,11 @@ agent-slack --safe-mode message send "#general" "hello"
 While safe mode is active:
 
 - `message send` → redirected to the draft editor with the text pre-filled; you review and send from the browser. The output includes `"safe_mode": true` and `"redirected_from": "send"`, and a warning is printed to stderr. Flags the editor cannot represent (`--attach`, `--blocks`, `--schedule`, `--schedule-in`, `--reply-broadcast`) are rejected with an error instead of being silently dropped.
-- `message edit` and `message delete` → blocked with an error.
+- Every other command whose effect other people can see (or that removes a pending post), and that has no editor to review it in, is refused with an error (exit code 1) before any Slack API call: `message edit`, `message delete`, `message react add`/`remove`, `message scheduled cancel`, `channel new`, `channel invite` (including `--external` Slack Connect invites), `canvas edit`, `canvas create --channel`, and `workflow run`.
 - In CI, where no editor can open, `message send` and `message compose` fail with an error instead of posting.
-- All read operations (`get`, `list`, `search`, etc.) and reactions are unchanged.
+- Read operations (`get`, `list`, `search`, etc.) and personal state stay allowed: `channel mark`, `later` changes, Slack-native drafts (`message draft create`/`update`/`delete`), and standalone `canvas create` (private to you until shared).
+
+Safe mode guards against an agent posting by accident or by ignoring instructions; it is not a boundary against a hostile process running as your user, which can read the stored Slack credentials directly.
 
 The env var accepts `1`, `true`, `yes`, or `on` (case-insensitive); anything else leaves safe mode off.
 
