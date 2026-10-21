@@ -28,7 +28,7 @@ export type MessageWatchOptions = {
   timeout?: string;
   settle?: string;
   pollInterval?: string;
-  includeSelf?: boolean;
+  excludeSelf?: boolean;
   noRtm?: boolean;
   maxBodyChars: string;
   resolveUsers?: boolean;
@@ -312,9 +312,11 @@ export async function handleMessageWatch(input: {
 
   const { scope, after, workspaceUrl } = await resolveWatchScope(input);
   const { client, auth } = await input.ctx.getClientForWorkspace(workspaceUrl);
-  const self = input.options.includeSelf
-    ? undefined
-    : getString((await client.api("auth.test")).user_id);
+  // Own messages count by default: the agent and its human often share one account,
+  // and the agent's own message is already excluded by `after`.
+  const self = input.options.excludeSelf
+    ? getString((await client.api("auth.test")).user_id)
+    : undefined;
 
   const fetchNew = async (since: string): Promise<SlackMessageSummary[]> => {
     const out: SlackMessageSummary[] = [];

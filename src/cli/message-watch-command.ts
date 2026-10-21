@@ -44,7 +44,10 @@ export function registerMessageWatchCommand(input: { messageCmd: Command; ctx: C
       "Polling interval when the live websocket is unavailable (min 5s)",
       "15s",
     )
-    .option("--include-self", "Also return your own messages (ignored by default)")
+    .option(
+      "--exclude-self",
+      "Ignore messages from your own account. Off by default: a human using the same account may answer.",
+    )
     .option(
       "--max-body-chars <n>",
       "Max content characters to include (default 8000, -1 for unlimited)",
@@ -52,6 +55,8 @@ export function registerMessageWatchCommand(input: { messageCmd: Command; ctx: C
     )
     .option("--resolve-users", "Resolve user IDs to user profiles");
   watchCmd.addOption(new Option("--no-rtm", "Poll only; don't open a websocket").hideHelp());
+  // Own messages used to be excluded by default; keep the old opt-in flag as a no-op.
+  watchCmd.addOption(new Option("--include-self").hideHelp());
   watchCmd.action(async (...args) => {
     const [targetArg, tsArg, options] = args as [
       string | undefined,

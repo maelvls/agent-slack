@@ -240,7 +240,7 @@ agent-slack message watch U05BRPTKL6A
 
 - It listens on Slack's live websocket (`rtm.connect`, works with imported browser credentials) and falls back to polling (`--poll-interval`, default 15s) when that is unavailable.
 - Messages newer than `--after` (default: the target message) count, so a reply that landed between `send` and `watch` is returned immediately.
-- Your own messages are ignored unless you pass `--include-self`. After the first new message it waits `--settle` (default 3s) to collect quick follow-ups.
+- Messages from your own account count too, since a human sharing the account may be the one answering; pass `--exclude-self` to ignore them. After the first new message it waits `--settle` (default 3s) to collect quick follow-ups.
 - On `--timeout` (default 30m) it prints `{"timed_out": true, "messages": []}` and exits with code 2.
 
 ### Compose a message (browser editor)

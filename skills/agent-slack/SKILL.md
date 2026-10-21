@@ -53,7 +53,7 @@ Pitfalls:
 - Bot messages have no `author.user_id`; use `.author.user_id // .author.bot_id` in jq.
 - Don't wrap calls in `timeout` (absent on macOS by default). The CLI has its own watchdog, set with `AGENT_SLACK_COMMAND_TIMEOUT_MS`.
 - Avoid paging `user list` to find someone; `user search` is one call.
-- To await an answer after `message send`, run `message watch <permalink>` with the `permalink` that `send` printed (as a background task if your harness supports it) rather than re-running `message list`. Replies posted before the watch started are still returned; your own messages are ignored.
+- To await an answer after `message send`, run `message watch <permalink>` with the `permalink` that `send` printed (as a background task if your harness supports it) rather than re-running `message list`. Replies posted before the watch started are still returned. Messages from your own account are included, because the human may reply from it; don't pass `--exclude-self` unless asked.
 
 ## Safety
 
