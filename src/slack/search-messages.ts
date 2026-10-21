@@ -67,9 +67,6 @@ export async function searchMessagesViaSearchApi(
       message_ts: ts,
       permalink: getString(m.permalink),
     });
-    if (messageRefs.length >= input.limit) {
-      break;
-    }
   }
 
   const downloadedPaths: Record<string, DownloadResult> = {};

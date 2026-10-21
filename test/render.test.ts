@@ -43,7 +43,7 @@ describe("renderSlackMessageContent", () => {
     };
 
     expect(renderSlackMessageContent(msg)).toBe(
-      "Notify <!subteam^S12345678> and <!subteam^G123ABC456> with @here, @channel, and @everyone",
+      "Notify @S12345678 and @G123ABC456 with @here, @channel, and @everyone",
     );
   });
 

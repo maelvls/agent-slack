@@ -99,4 +99,87 @@ describe("SlackApiClient browser rate-limit retries", () => {
     await expect(client.apiMultipart("files.createCanvas", {})).resolves.toEqual({ ok: true });
     expect(delays).toEqual([45000]);
   });
+
+  test("maxRateLimitWaitMs: 0 throws instead of waiting", async () => {
+    const { client, delays } = rateLimitedThenOk("1");
+    await expect(client.api("conversations.list", {}, { maxRateLimitWaitMs: 0 })).rejects.toThrow(
+      "retry-after 1s exceeds",
+    );
+    expect(delays).toEqual([]);
+  });
+});
+
+describe("SlackApiClient standard-token rate-limit retries", () => {
+  function rateLimited(retryAfter: string): Response {
+    return new Response(JSON.stringify({ ok: false, error: "ratelimited" }), {
+      status: 429,
+      headers: { "Content-Type": "application/json", "Retry-After": retryAfter },
+    });
+  }
+
+  function ok(): Response {
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  function standardClient(responses: Response[]) {
+    const fetchMock = mock(async (_input: string | URL | Request, _init?: RequestInit) => {
+      return responses.shift()!;
+    });
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const delays: number[] = [];
+    globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+      delays.push(delay ?? 0);
+      callback();
+      return 0;
+    }) as unknown as typeof setTimeout;
+    // WebClient captures globalThis.fetch at construction, so build it after mocking.
+    const client = new SlackApiClient({ auth_type: "standard", token: "xoxb-test" });
+    return { client, fetchMock, delays };
+  }
+
+  test("waits out Retry-After and retries instead of throwing", async () => {
+    const { client, fetchMock, delays } = standardClient([rateLimited("2"), ok()]);
+    await expect(client.api("conversations.list", {})).resolves.toMatchObject({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(delays).toContain(2000);
+  });
+
+  test("covers apiMultipart, which delegates to the standard path", async () => {
+    const { client, fetchMock } = standardClient([rateLimited("1"), ok()]);
+    await expect(client.apiMultipart("saved.update", {})).resolves.toMatchObject({ ok: true });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test("throws when Retry-After exceeds the max wait", async () => {
+    process.env.AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS = "10000";
+    const { client, fetchMock } = standardClient([rateLimited("30"), ok()]);
+    await expect(client.api("conversations.list", {})).rejects.toThrow(
+      "retry-after 30s exceeds AGENT_SLACK_RATE_LIMIT_MAX_WAIT_MS=10000",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("maxRateLimitWaitMs: 0 throws instead of waiting", async () => {
+    const { client, fetchMock, delays } = standardClient([rateLimited("1"), ok()]);
+    await expect(client.api("conversations.list", {}, { maxRateLimitWaitMs: 0 })).rejects.toThrow(
+      "retry-after 1s exceeds",
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(delays).not.toContain(1000);
+  });
+
+  test("gives up after 3 retries and surfaces the rate-limit error", async () => {
+    const { client, fetchMock } = standardClient([
+      rateLimited("1"),
+      rateLimited("1"),
+      rateLimited("1"),
+      rateLimited("1"),
+      ok(),
+    ]);
+    await expect(client.api("conversations.list", {})).rejects.toThrow(/rate-limit/i);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
 });

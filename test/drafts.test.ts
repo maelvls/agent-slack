@@ -254,4 +254,38 @@ describe("findDraft", () => {
 
     expect(draft.last_updated_ts).toBe("1700000000.123");
   });
+
+  test("follows the drafts.list cursor to find a draft past the first page", async () => {
+    const cursors: unknown[] = [];
+    const client = {
+      api: async (_method: string, params: Record<string, unknown> = {}) => {
+        cursors.push(params.cursor);
+        return params.cursor === "page-2"
+          ? { ok: true, drafts: [rawDraft], response_metadata: { next_cursor: "" } }
+          : {
+              ok: true,
+              drafts: [{ ...rawDraft, id: "DrOther" }],
+              response_metadata: { next_cursor: "page-2" },
+            };
+      },
+    } as unknown as SlackApiClient;
+
+    const draft = await findDraft(client, "Dr123");
+
+    expect(draft.id).toBe("Dr123");
+    expect(cursors).toEqual([undefined, "page-2"]);
+  });
+
+  test("stops paging after a bounded number of pages", async () => {
+    let calls = 0;
+    const client = {
+      api: async () => {
+        calls++;
+        return { ok: true, drafts: [], response_metadata: { next_cursor: "again" } };
+      },
+    } as unknown as SlackApiClient;
+
+    await expect(findDraft(client, "DrMissing")).rejects.toThrow("Draft not found: DrMissing");
+    expect(calls).toBe(10);
+  });
 });

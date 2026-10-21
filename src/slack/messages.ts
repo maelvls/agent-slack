@@ -40,47 +40,12 @@ export async function fetchMessage(
   client: SlackApiClient,
   input: { ref: SlackMessageRef; includeReactions?: boolean },
 ): Promise<SlackMessageSummary> {
-  const history = await client.api("conversations.history", {
-    channel: input.ref.channel_id,
-    latest: input.ref.message_ts,
-    inclusive: true,
-    limit: 5,
-    include_all_metadata: input.includeReactions ? true : undefined,
+  const msg = await findRawMessage(client, {
+    channelId: input.ref.channel_id,
+    ts: input.ref.message_ts,
+    threadTsHint: input.ref.thread_ts_hint,
+    includeReactions: input.includeReactions,
   });
-  const historyMessages = asArray(history.messages);
-  let msg = historyMessages.find(
-    (m): m is Record<string, unknown> => isRecord(m) && getString(m.ts) === input.ref.message_ts,
-  );
-
-  // Thread replies are not guaranteed to appear in channel history. If the URL
-  // includes ?thread_ts=..., scan the thread directly.
-  if (!msg && input.ref.thread_ts_hint) {
-    msg = await findMessageInThread(client, {
-      channelId: input.ref.channel_id,
-      threadTs: input.ref.thread_ts_hint,
-      targetTs: input.ref.message_ts,
-      includeReactions: input.includeReactions,
-    });
-  }
-
-  // Fallback: if the message_ts is actually the thread root, replies can still
-  // be fetched via conversations.replies even if history is missing it.
-  if (!msg) {
-    try {
-      const rootResp = await client.api("conversations.replies", {
-        channel: input.ref.channel_id,
-        ts: input.ref.message_ts,
-        limit: 1,
-        include_all_metadata: input.includeReactions ? true : undefined,
-      });
-      const [root] = asArray(rootResp.messages);
-      if (isRecord(root) && getString(root.ts) === input.ref.message_ts) {
-        msg = root;
-      }
-    } catch {
-      // ignore
-    }
-  }
 
   if (!msg) {
     throw new Error("Message not found (no access or wrong URL)");
@@ -112,6 +77,52 @@ export async function fetchMessage(
   };
 }
 
+/**
+ * Look up a raw message by ts. Thread replies are absent from channel history, so
+ * fall back to the thread: the URL's thread_ts hint if any, else the message's own ts
+ * (conversations.replies accepts either a thread root or any reply in it).
+ */
+export async function findRawMessage(
+  client: SlackApiClient,
+  input: { channelId: string; ts: string; threadTsHint?: string; includeReactions?: boolean },
+): Promise<Record<string, unknown> | undefined> {
+  const history = await client.api("conversations.history", {
+    channel: input.channelId,
+    latest: input.ts,
+    inclusive: true,
+    limit: 5,
+    include_all_metadata: input.includeReactions ? true : undefined,
+  });
+  const found = asArray(history.messages).find(
+    (m): m is Record<string, unknown> => isRecord(m) && getString(m.ts) === input.ts,
+  );
+  if (found) {
+    return found;
+  }
+
+  const thread = { channelId: input.channelId, targetTs: input.ts };
+  if (input.threadTsHint) {
+    const inHintedThread = await findMessageInThread(client, {
+      ...thread,
+      threadTs: input.threadTsHint,
+      includeReactions: input.includeReactions,
+    });
+    if (inHintedThread) {
+      return inHintedThread;
+    }
+  }
+  try {
+    return await findMessageInThread(client, {
+      ...thread,
+      threadTs: input.ts,
+      includeReactions: input.includeReactions,
+    });
+  } catch {
+    // thread_not_found etc.: the ts is neither a root nor a reply we can see.
+    return undefined;
+  }
+}
+
 async function findMessageInThread(
   client: SlackApiClient,
   input: {
@@ -126,6 +137,9 @@ async function findMessageInThread(
     const resp = await client.api("conversations.replies", {
       channel: input.channelId,
       ts: input.threadTs,
+      // Start the page at the target so long threads don't need paging to reach it.
+      oldest: input.targetTs,
+      inclusive: true,
       limit: 200,
       cursor,
       include_all_metadata: input.includeReactions ? true : undefined,
@@ -269,6 +283,8 @@ export async function fetchThread(
   input: { channelId: string; threadTs: string; includeReactions?: boolean },
 ): Promise<SlackMessageSummary[]> {
   const out: SlackMessageSummary[] = [];
+  // conversations.replies repeats the thread root at the top of every page.
+  const seenTs = new Set<string>();
   let cursor: string | undefined;
 
   for (;;) {
@@ -283,6 +299,13 @@ export async function fetchThread(
     for (const m of messages) {
       if (!isRecord(m)) {
         continue;
+      }
+      const mTs = getString(m.ts);
+      if (mTs) {
+        if (seenTs.has(mTs)) {
+          continue;
+        }
+        seenTs.add(mTs);
       }
       const files = asArray(m.files)
         .map((f) => toSlackFileSummary(f))

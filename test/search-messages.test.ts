@@ -1,6 +1,46 @@
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { searchMessagesInChannelsFallback } from "../src/slack/search-messages.ts";
+import { searchSlack } from "../src/slack/search.ts";
 import { startCommandWatchdog, stopCommandWatchdog } from "../src/lib/command-watchdog.ts";
+
+describe("searchSlack via search.messages", () => {
+  test("applies --limit after dropping hits that can't be fetched", async () => {
+    const searchCalls: Record<string, unknown>[] = [];
+    const byTs: Record<string, Record<string, unknown>> = {
+      "1.000001": { ts: "1.000001", text: "plain text hit" },
+    };
+    const client = {
+      api: async (method: string, params: Record<string, unknown>) => {
+        if (method === "search.messages") {
+          searchCalls.push(params);
+          return {
+            messages: {
+              matches: ["2.000002", "1.000001"].map((ts) => ({
+                ts,
+                channel: { id: "C12345678" },
+              })),
+            },
+          };
+        }
+        if (method === "conversations.history") {
+          const msg = byTs[String(params.latest)];
+          return { messages: msg ? [msg] : [] };
+        }
+        // 2.000002 is not visible to us anywhere.
+        throw new Error("thread_not_found");
+      },
+    };
+
+    const result = await searchSlack({
+      client: client as never,
+      auth: { auth_type: "standard", token: "xoxb-test" },
+      options: { query: "hit", kind: "messages", content_type: "text", limit: 1, download: false },
+    });
+
+    expect(searchCalls[0]?.count).toBeGreaterThan(1);
+    expect(result.messages?.map((m) => m.ts)).toEqual(["1.000001"]);
+  });
+});
 
 type HistoryPage = { messages: Record<string, unknown>[]; next_cursor?: string };
 
