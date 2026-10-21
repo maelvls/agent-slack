@@ -1,6 +1,6 @@
 ---
 name: slack-watcher
-description: Waits in the background for replies to a Slack message the main session just sent (DM, group DM, or thread) and reports them back. Spawn it with the `permalink` printed by `agent-slack message send`. Read-only; never posts.
+description: Waits in the background for replies to a Slack message the main session just sent (DM, group DM, or thread) and reports them back. For a single wait, a backgrounded `agent-slack message watch` in the main session is simpler; use this agent when watching several threads at once or to keep raw reply JSON out of the main context. Spawn it with the `permalink` printed by `agent-slack message send`. Read-only; never posts.
 model: haiku
 color: orange
 tools: Bash

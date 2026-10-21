@@ -53,7 +53,8 @@ Pitfalls:
 - Bot messages have no `author.user_id`; use `.author.user_id // .author.bot_id` in jq.
 - Don't wrap calls in `timeout` (absent on macOS by default). The CLI has its own watchdog, set with `AGENT_SLACK_COMMAND_TIMEOUT_MS`.
 - Avoid paging `user list` to find someone; `user search` is one call.
-- To await an answer after `message send`, don't poll with `message list`. If a `slack-watcher` agent is available (Claude Code; bundled at [agents/slack-watcher.md](agents/slack-watcher.md)), spawn it in the background with the `permalink` that `send` printed. Otherwise run `message watch <permalink>` as a background task if your harness supports it. Replies posted before the watch started are still returned. Messages from your own account are included, because the human may reply from it; don't pass `--exclude-self` unless asked.
+- To await an answer after `message send`, don't poll with `message list`. Run `message watch <permalink> --timeout 4h --max-body-chars 4000` (the `permalink` that `send` printed) as a background task if your harness has one (Claude Code: `run_in_background`); never in the foreground, which blocks the session and hits tool timeouts. It exits 0 with the replies, 2 on timeout; don't poll its output meanwhile. Replies posted before the watch started are still returned. Messages from your own account are included, because the human may reply from it; don't pass `--exclude-self` unless asked.
+- Use the bundled `slack-watcher` agent ([agents/slack-watcher.md](agents/slack-watcher.md), Claude Code) instead only when watching several threads at once, or to keep raw reply JSON out of your context: spawn it in the background with the permalink.
 
 ## Safety
 
