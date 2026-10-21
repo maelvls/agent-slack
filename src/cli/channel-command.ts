@@ -16,6 +16,7 @@ import {
   splitEmailsFromInviteTargets,
 } from "../slack/channel-admin.ts";
 import { resolveUserId } from "../slack/users.ts";
+import { refuseUnderSafeMode } from "./safe-mode.ts";
 import { parseMsgTarget } from "./targets.ts";
 
 type ChannelListOptions = {
@@ -120,6 +121,7 @@ export function registerChannelCommand(input: { program: Command; ctx: CliContex
     .action(async (...args) => {
       const [options] = args as [{ name: string; private?: boolean; workspace?: string }];
       try {
+        refuseUnderSafeMode(input.program, "channel new");
         const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
         const payload = await input.ctx.withAutoRefresh({
           workspaceUrl,
@@ -166,6 +168,7 @@ export function registerChannelCommand(input: { program: Command; ctx: CliContex
         },
       ];
       try {
+        refuseUnderSafeMode(input.program, "channel invite");
         if (options.allowExternalUserInvites && !options.external) {
           throw new Error("--allow-external-user-invites requires --external");
         }

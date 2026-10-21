@@ -118,17 +118,28 @@ export type InstallMethod = "binary" | "npm" | "bun";
  * - "bun"    → running via Bun runtime (bun install -g agent-slack / bunx)
  * - "binary" → standalone compiled binary (GitHub release)
  */
-export function detectInstallMethod(): InstallMethod {
+export function detectInstallMethod(
+  runtime: { execPath: string; isBun: boolean; npmExecpath?: string } = {
+    execPath: process.execPath,
+    isBun: Boolean(process.versions.bun),
+    npmExecpath: process.env.npm_execpath,
+  },
+): InstallMethod {
+  // Compare the executable name without directory or a Windows ".exe" suffix,
+  // case-insensitively, so bun.exe and node.exe are recognized too.
+  const execName = basename(runtime.execPath.replaceAll("\\", "/"))
+    .toLowerCase()
+    .replace(/\.exe$/, "");
+
   // Running under Bun runtime (bun install -g, bunx, bun run, etc.)
   // Note: compiled bun binaries also have process.versions.bun set,
   // so we check that the executable is actually the bun runtime itself.
-  if (process.versions.bun && basename(process.execPath) === "bun") {
+  if (runtime.isBun && execName === "bun") {
     return "bun";
   }
 
   // Running under Node.js (npm install -g, npx, etc.)
-  const execName = basename(process.execPath);
-  if (["node", "nodejs", "node.exe"].includes(execName) || process.env.npm_execpath) {
+  if (["node", "nodejs"].includes(execName) || runtime.npmExecpath) {
     return "npm";
   }
 
@@ -180,6 +191,56 @@ function detectPlatformAsset(): string {
 async function sha256(filePath: string): Promise<string> {
   const data = await readFile(filePath);
   return createHash("sha256").update(data).digest("hex");
+}
+
+type BinaryFs = {
+  rename: typeof rename;
+  copyFile: typeof copyFile;
+  chmod: typeof chmod;
+  rm: typeof rm;
+};
+
+const nodeBinaryFs: BinaryFs = { rename, copyFile, chmod, rm };
+
+/**
+ * Best-effort removal of the `.bak` a previous self-update left next to the
+ * binary. Windows refuses to delete the image of a running process, so the
+ * update that replaced it has to leave it for a later run.
+ */
+export async function removeStaleBinaryBackup(
+  currentBinary: string = process.execPath,
+  fs: BinaryFs = nodeBinaryFs,
+): Promise<void> {
+  await fs.rm(`${currentBinary}.bak`, { force: true }).catch(() => {});
+}
+
+/**
+ * Swap `newBinary` into place at `currentBinary`, keeping the old one as
+ * `.bak` until the copy succeeds. A failure to delete that backup does not
+ * undo the update: on Windows the old binary is still running and cannot be
+ * deleted (EPERM/EBUSY), so it stays until `removeStaleBinaryBackup`.
+ */
+export async function replaceBinary(
+  input: { newBinary: string; currentBinary: string },
+  fs: BinaryFs = nodeBinaryFs,
+): Promise<void> {
+  const backupPath = `${input.currentBinary}.bak`;
+  // Windows cannot rename onto an existing file, so clear any leftover first.
+  await removeStaleBinaryBackup(input.currentBinary, fs);
+  await fs.rename(input.currentBinary, backupPath);
+  try {
+    await fs.copyFile(input.newBinary, input.currentBinary);
+    await fs.chmod(input.currentBinary, 0o755);
+  } catch (err) {
+    // Restore backup on failure
+    try {
+      await fs.rename(backupPath, input.currentBinary);
+    } catch {
+      // ignore restore failure
+    }
+    throw err;
+  }
+  await fs.rm(backupPath, { force: true }).catch(() => {});
 }
 
 /**
@@ -255,25 +316,7 @@ export async function performUpdate(
       }
     }
 
-    // Replace current binary
-    const currentBin = process.execPath;
-    const backupPath = `${currentBin}.bak`;
-
-    // Rename current -> backup, copy new -> current, remove backup
-    await rename(currentBin, backupPath);
-    try {
-      await copyFile(binTmp, currentBin);
-      await chmod(currentBin, 0o755);
-      await rm(backupPath, { force: true });
-    } catch (err) {
-      // Restore backup on failure
-      try {
-        await rename(backupPath, currentBin);
-      } catch {
-        // ignore restore failure
-      }
-      throw err;
-    }
+    await replaceBinary({ newBinary: binTmp, currentBinary: process.execPath });
 
     return { success: true, message: `Updated agent-slack to ${latest}` };
   } finally {

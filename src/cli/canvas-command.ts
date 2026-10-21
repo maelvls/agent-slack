@@ -13,6 +13,7 @@ import { pruneEmpty } from "../lib/compact-json.ts";
 import { resolveChannelId } from "../slack/channels.ts";
 import { readFile } from "node:fs/promises";
 import { parseMaxChars } from "./message-actions.ts";
+import { refuseUnderSafeMode } from "./safe-mode.ts";
 
 type CanvasCreateOptions = {
   file?: string;
@@ -100,6 +101,10 @@ export function registerCanvasCommand(input: { program: Command; ctx: CliContext
     .action(async (...args) => {
       const [options] = args as [CanvasCreateOptions];
       try {
+        // A standalone canvas is private to its creator; a channel tab is not.
+        if (options.channel) {
+          refuseUnderSafeMode(input.program, "canvas create --channel");
+        }
         const markdown = await readCanvasMarkdownInput(options);
         const workspaceUrl = input.ctx.effectiveWorkspaceUrl(options.workspace);
         if (options.channel) {
@@ -201,6 +206,7 @@ export function registerCanvasCommand(input: { program: Command; ctx: CliContext
     .action(async (...args) => {
       const [value, options] = args as [string, CanvasEditOptions];
       try {
+        refuseUnderSafeMode(input.program, "canvas edit");
         const target = resolveCanvasTarget(value, options.workspace);
         const operation = options.operation.trim();
         if (!(CANVAS_EDIT_OPERATIONS as readonly string[]).includes(operation)) {

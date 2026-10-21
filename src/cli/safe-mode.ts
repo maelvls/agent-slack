@@ -1,13 +1,15 @@
+import type { Command } from "commander";
 import type { CliContext } from "./context.ts";
 import { composeMessage } from "./compose-actions.ts";
 
 const TRUTHY_VALUES = new Set(["1", "true", "yes", "on"]);
 
 /**
- * Safe mode keeps a human in the loop for anything that posts to Slack:
- * `message send` is redirected to the draft editor, and `message edit` /
- * `message delete` are blocked. Enabled via the global `--safe-mode` flag
- * or the AGENT_SLACK_SAFE_MODE env var ("1", "true", "yes", "on").
+ * Safe mode keeps a human in the loop for anything other people can see:
+ * `message send` is redirected to the draft editor, and every other command
+ * with a visible effect calls `refuseUnderSafeMode`. Enabled via the global
+ * `--safe-mode` flag or the AGENT_SLACK_SAFE_MODE env var ("1", "true",
+ * "yes", "on").
  */
 export function isSafeModeEnabled(input?: {
   cliFlag?: boolean;
@@ -21,10 +23,22 @@ export function isSafeModeEnabled(input?: {
   return raw !== undefined && TRUTHY_VALUES.has(raw);
 }
 
-export function safeModeBlockedError(action: "edit" | "delete"): Error {
+export function safeModeBlockedError(commandName: string): Error {
   return new Error(
-    `Safe mode is active (AGENT_SLACK_SAFE_MODE or --safe-mode): "message ${action}" is blocked so an agent cannot ${action} messages without human review. Disable safe mode to ${action} messages.`,
+    `Safe mode is active (AGENT_SLACK_SAFE_MODE or --safe-mode): "${commandName}" is blocked so an agent cannot change what other people see in Slack without human review. Disable safe mode to run it.`,
   );
+}
+
+/**
+ * Throws when safe mode is on. Call it first in the action of any command
+ * whose effect other people can see and that has no draft-editor review
+ * step, so the refusal happens before any Slack API call. `command` may be
+ * any command in the tree; the global `--safe-mode` flag is read from it.
+ */
+export function refuseUnderSafeMode(command: Command, commandName: string): void {
+  if (isSafeModeEnabled({ cliFlag: Boolean(command.optsWithGlobals().safeMode) })) {
+    throw safeModeBlockedError(commandName);
+  }
 }
 
 export type SendOptionsForRedirect = {

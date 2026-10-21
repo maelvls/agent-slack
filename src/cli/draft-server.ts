@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type Server } from "node:http";
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { stopCommandWatchdog } from "../lib/command-watchdog.ts";
 // @ts-ignore — import attributes need module:"esnext" in tsconfig; Bun handles this fine
@@ -12,8 +12,15 @@ export type DraftEditorConfig = {
   threadTs?: string;
   initialText?: string;
   onSend: (mrkdwn: string) => Promise<{ ts: string }>;
-  openBrowser?: (url: string) => void;
+  /** Opens `url` (which carries the session token) in a browser; rejects on failure. */
+  openBrowser?: (url: string) => Promise<void>;
+  /** How long to wait for the opener before printing the full URL anyway (default 3s). */
+  openerTimeoutMs?: number;
 };
+
+// An opener that hasn't reported back by then may be blocked (e.g. xdg-open running a
+// terminal browser on a headless box), so the human gets the full URL instead.
+const DEFAULT_OPENER_TIMEOUT_MS = 3000;
 
 export type DraftResult = { sent: true; text: string } | { cancelled: true };
 
@@ -22,11 +29,15 @@ export function openDraftEditor(config: DraftEditorConfig): Promise<DraftResult>
   stopCommandWatchdog();
   // Required on every POST so that only the page we served can send or cancel:
   // a custom header forces a CORS preflight, which this server never approves.
+  // It travels only in the URL fragment given to the browser opener, never in
+  // the served HTML or on stderr, so an agent that reads stderr and fetches
+  // the page still cannot send without the human.
   const token = randomBytes(32).toString("hex");
 
   return new Promise<DraftResult>((resolve, reject) => {
     let settled = false;
     let port = 0;
+    let openerTimer: ReturnType<typeof setTimeout> | undefined;
 
     const server: Server = createServer(async (req, res) => {
       // Rejects DNS-rebinding requests, which reach us with a foreign Host.
@@ -43,7 +54,7 @@ export function openDraftEditor(config: DraftEditorConfig): Promise<DraftResult>
       }
 
       if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
-        const html = buildEditorHtml(config, token);
+        const html = buildEditorHtml(config);
         res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         res.end(html);
         return;
@@ -96,6 +107,7 @@ export function openDraftEditor(config: DraftEditorConfig): Promise<DraftResult>
 
     server.on("close", () => {
       clearTimeout(idleTimeout);
+      clearTimeout(openerTimer);
       if (!settled) {
         settled = true;
         resolve({ cancelled: true });
@@ -114,9 +126,32 @@ export function openDraftEditor(config: DraftEditorConfig): Promise<DraftResult>
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
       port = typeof addr === "object" && addr ? addr.port : 0;
-      const url = `http://127.0.0.1:${port}`;
-      process.stderr.write(`Draft editor: ${url}\n`);
-      (config.openBrowser ?? openBrowser)(url);
+      const url = `http://127.0.0.1:${port}/`;
+      const urlWithToken = `${url}#token=${token}`;
+      // Only the first outcome (opened, failed, or still pending) prints.
+      let reported = false;
+      const report = (message: string): void => {
+        if (!reported) {
+          reported = true;
+          clearTimeout(openerTimer);
+          process.stderr.write(message);
+        }
+      };
+      // The human needs the token to use the editor, so these print it in full.
+      openerTimer = setTimeout(
+        () => report(`If the draft editor didn't open in your browser, open: ${urlWithToken}\n`),
+        config.openerTimeoutMs ?? DEFAULT_OPENER_TIMEOUT_MS,
+      );
+      openerTimer.unref?.();
+      Promise.resolve()
+        .then(() => (config.openBrowser ?? openBrowser)(urlWithToken))
+        .then(
+          () =>
+            report(
+              `Draft editor opened in your browser (${url} is for reference only; it can't send).\n`,
+            ),
+          () => report(`Could not open a browser. Open the draft editor at: ${urlWithToken}\n`),
+        );
     });
   });
 }
@@ -162,10 +197,46 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
-function openBrowser(url: string): void {
-  const cmd =
-    process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-  execFile(cmd, [url], () => {});
+/**
+ * The command that opens `url` in a browser, or null when there is no display to
+ * open it on (Linux without X11/Wayland, e.g. over SSH).
+ */
+export function browserOpenCommand(
+  url: string,
+  { platform, env }: { platform: NodeJS.Platform; env: NodeJS.ProcessEnv } = {
+    platform: process.platform,
+    env: process.env,
+  },
+): { cmd: string; args: string[] } | null {
+  if (platform === "darwin") {
+    return { cmd: "open", args: [url] };
+  }
+  if (platform === "win32") {
+    // `start` is a cmd built-in, not an executable, and cmd would also interpret
+    // metacharacters in the URL; the URL protocol handler takes it verbatim.
+    return { cmd: "rundll32", args: ["url.dll,FileProtocolHandler", url] };
+  }
+  if (!env.DISPLAY && !env.WAYLAND_DISPLAY) {
+    return null;
+  }
+  return { cmd: "xdg-open", args: [url] };
+}
+
+function openBrowser(url: string): Promise<void> {
+  const command = browserOpenCommand(url);
+  if (!command) {
+    return Promise.reject(new Error("No display to open a browser on"));
+  }
+  return new Promise((resolve, reject) => {
+    // Detached with no stdio, so a terminal browser started by the opener can't
+    // take over this process's terminal.
+    const child = spawn(command.cmd, command.args, { detached: true, stdio: "ignore" });
+    child.on("error", reject);
+    child.on("exit", (code) =>
+      code === 0 ? resolve() : reject(new Error(`${command.cmd} exited with ${code}`)),
+    );
+    child.unref();
+  });
 }
 
 function buildSlackThreadUrl(config: DraftEditorConfig): string | null {
@@ -192,7 +263,7 @@ function extractWorkspaceName(url?: string): string | null {
   }
 }
 
-function buildEditorHtml(config: DraftEditorConfig, token: string): string {
+function buildEditorHtml(config: DraftEditorConfig): string {
   const threadUrl = buildSlackThreadUrl(config);
   const workspaceName = extractWorkspaceName(config.workspaceUrl);
   const injectedConfig = JSON.stringify({
@@ -203,7 +274,6 @@ function buildEditorHtml(config: DraftEditorConfig, token: string): string {
     threadTs: config.threadTs || null,
     threadUrl,
     initialText: config.initialText || "",
-    token,
   });
 
   // JSON.stringify handles quotes/backslashes; escape < and > to prevent
