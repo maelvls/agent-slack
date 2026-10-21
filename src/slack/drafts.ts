@@ -108,21 +108,34 @@ export function parseDraftRecord(raw: unknown): SlackDraft | null {
 
 export async function listDrafts(
   client: SlackApiClient,
-  options?: { limit?: number; activeOnly?: boolean },
-): Promise<{ drafts: SlackDraft[] }> {
+  options?: { limit?: number; activeOnly?: boolean; cursor?: string },
+): Promise<{ drafts: SlackDraft[]; next_cursor?: string }> {
   const resp = await client.api("drafts.list", {
     is_active: options?.activeOnly === false ? undefined : true,
     limit: options?.limit,
+    cursor: options?.cursor,
   });
   const drafts = asArray(resp.drafts)
     .map(parseDraftRecord)
     .filter((draft): draft is SlackDraft => draft !== null);
-  return { drafts };
+  const meta = isRecord(resp.response_metadata) ? resp.response_metadata : null;
+  return { drafts, next_cursor: getString(meta?.next_cursor) || undefined };
 }
 
+// Bounds the drafts.list scan in findDraft.
+const MAX_FIND_DRAFT_PAGES = 10;
+
 export async function findDraft(client: SlackApiClient, draftId: string): Promise<SlackDraft> {
-  const { drafts } = await listDrafts(client, { activeOnly: false });
-  const matches = drafts.filter((d) => d.id === draftId);
+  const matches: SlackDraft[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_FIND_DRAFT_PAGES; page++) {
+    const resp = await listDrafts(client, { activeOnly: false, cursor });
+    matches.push(...resp.drafts.filter((d) => d.id === draftId));
+    cursor = resp.next_cursor;
+    if (!cursor || matches.some((d) => d.last_updated_ts)) {
+      break;
+    }
+  }
   // update/delete need last_updated_ts for conflict detection, so prefer a
   // usable record if the response happens to include a malformed duplicate
   // (e.g. a first entry missing last_updated_ts).

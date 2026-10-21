@@ -16,6 +16,9 @@ import {
   searchMessagesViaSearchApi,
 } from "./search-messages.ts";
 
+// Five pages of search.messages / search.files at 100 per page.
+const MAX_RAW_SEARCH_MATCHES = 500;
+
 export type SearchKind = "messages" | "files" | "all";
 export type ContentType = "any" | "text" | "image" | "snippet" | "file";
 
@@ -51,6 +54,9 @@ export async function searchSlack(input: {
   const limit = Math.min(Math.max(input.options.limit ?? 20, 1), 200);
   const maxContentChars = input.options.max_content_chars ?? 4000;
   const contentType = input.options.content_type ?? "any";
+  // Raw search hits are later dropped by --content-type or when they can't be fetched;
+  // over-fetch so `limit` results still come back when more exist.
+  const rawLimit = Math.min(limit * (contentType === "any" ? 2 : 5), MAX_RAW_SEARCH_MATCHES);
   const download = input.options.download ?? true;
   if (!download && (input.options.kind === "files" || input.options.kind === "all")) {
     throw new Error("File search requires downloads enabled (so agents get local file paths).");
@@ -87,7 +93,10 @@ export async function searchSlack(input: {
       out.referenced_users = messageResult.referenced_users;
       out.truncated_channels = messageResult.truncated_channels;
     } else {
-      const rawMatches = await searchMessagesRaw(input.client, { query: slackQuery, limit });
+      const rawMatches = await searchMessagesRaw(input.client, {
+        query: slackQuery,
+        limit: rawLimit,
+      });
       const messageResult = await searchMessagesViaSearchApi(input.client, {
         auth: input.auth,
         workspace_url: input.options.workspace_url,
@@ -119,7 +128,7 @@ export async function searchSlack(input: {
         contentType,
       });
     } else {
-      const rawMatches = await searchFilesRaw(input.client, { query: slackQuery, limit });
+      const rawMatches = await searchFilesRaw(input.client, { query: slackQuery, limit: rawLimit });
       fileResult = await searchFilesViaSearchApi(input.client, {
         auth: input.auth,
         slack_query: slackQuery,

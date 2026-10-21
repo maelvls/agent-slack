@@ -98,6 +98,41 @@ describe("fetchLaterItems", () => {
     expect(result.items[0]?.channel_id).toBe("C123");
   });
 
+  test("hydrates saved thread replies from conversations.replies", async () => {
+    const { client, calls } = createClient({
+      "saved.list": {
+        ok: true,
+        saved_items: [
+          { item_id: "C1", item_type: "message", ts: "5.5", state: "in_progress", date_created: 1 },
+        ],
+        counts: {},
+      },
+      "conversations.info": { ok: true, channel: { name: "test" } },
+      // Channel history skips thread replies; it returns the root instead.
+      "conversations.history": { ok: true, messages: [{ ts: "1.1", text: "root" }] },
+      "conversations.replies": {
+        ok: true,
+        messages: [
+          { ts: "1.1", text: "root", user: "U1" },
+          { ts: "5.5", thread_ts: "1.1", text: "the saved reply", user: "U2" },
+        ],
+      },
+    });
+
+    const result = await fetchLaterItems(client);
+
+    expect(result.items[0]?.message).toEqual({
+      author: { user_id: "U2", bot_id: undefined },
+      content: "the saved reply",
+      thread_ts: "1.1",
+      reply_count: undefined,
+    });
+    expect(calls.find((c) => c.method === "conversations.replies")?.params).toMatchObject({
+      channel: "C1",
+      ts: "5.5",
+    });
+  });
+
   test("filters by state", async () => {
     const { client } = createClient({
       "saved.list": {

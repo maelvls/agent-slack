@@ -14,19 +14,31 @@ function isSafeEncodedId(value: string): boolean {
   return ENCODED_ID_PATTERN.test(value);
 }
 
+function nonNegativeInt(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
 export function extractMrkdwnFromRichTextBlock(block: unknown): string {
   if (!isRecord(block)) {
     return "";
   }
   const elements = Array.isArray(block.elements) ? block.elements : [];
-  const out: string[] = [];
+  let out = "";
+  let prevWasList = false;
   for (const el of elements) {
     const txt = extractMrkdwnFromRichTextElement(el);
-    if (txt.trim()) {
-      out.push(txt);
+    if (!txt.trim()) {
+      continue;
     }
+    // Nested list levels arrive as sibling lists; keep them in one block so the indent nests.
+    const isList = isRecord(el) && el.type === "rich_text_list";
+    if (out) {
+      out += isList && prevWasList ? "\n" : "\n\n";
+    }
+    out += txt;
+    prevWasList = isList;
   }
-  return out.join("\n\n");
+  return out;
 }
 
 function extractMrkdwnFromRichTextElement(el: unknown): string {
@@ -71,7 +83,9 @@ function extractMrkdwnFromRichTextElement(el: unknown): string {
     const style = typeof el.style === "string" ? el.style : "bullet";
     const items: string[] = [];
     const itemEls = Array.isArray(el.elements) ? el.elements : [];
-    let num = 0;
+    const indent = "  ".repeat(nonNegativeInt(el.indent));
+    // An ordered list split by a nested list resumes numbering via `offset`.
+    let num = nonNegativeInt(el.offset);
     for (const item of itemEls) {
       const txt = extractMrkdwnFromRichTextElement(item).trim();
       if (!txt) {
@@ -79,7 +93,7 @@ function extractMrkdwnFromRichTextElement(el: unknown): string {
       }
       num++;
       const prefix = style === "ordered" ? `${num}. ` : "- ";
-      items.push(`${prefix}${txt}`);
+      items.push(`${indent}${prefix}${txt}`);
     }
     return items.join("\n");
   }
@@ -133,6 +147,18 @@ function extractMrkdwnFromRichTextElement(el: unknown): string {
   if (t === "usergroup") {
     const usergroupId = getString(el.usergroup_id);
     return isSafeEncodedId(usergroupId) ? `<!subteam^${usergroupId}>` : "";
+  }
+
+  if (t === "date") {
+    // Re-emit as mrkdwn <!date^ts^format|fallback>; delimiters are stripped so a crafted
+    // format or fallback can't break out of the token.
+    const fallback = getString(el.fallback).replace(/[<>]/g, "");
+    const ts = el.timestamp;
+    if (typeof ts !== "number" || !Number.isInteger(ts) || ts < 0) {
+      return fallback;
+    }
+    const format = getString(el.format).replace(/[<>|^]/g, "") || "{date_short}";
+    return `<!date^${ts}^${format}${fallback ? `|${fallback}` : ""}>`;
   }
 
   if (t === "broadcast") {

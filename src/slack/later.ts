@@ -1,4 +1,5 @@
 import type { SlackApiClient } from "./client.ts";
+import { findRawMessage } from "./messages.ts";
 import { renderSlackMessageContent } from "./render.ts";
 
 export type LaterItem = {
@@ -153,17 +154,10 @@ export async function fetchLaterItems(
         // ignore
       }
 
-      // Fetch the actual message
+      // Fetch the actual message (saved thread replies only come back from the thread)
       if (ts) {
         try {
-          const history = await client.api("conversations.history", {
-            channel: channelId,
-            latest: ts,
-            inclusive: true,
-            limit: 1,
-          });
-          const msgs = asArray(history.messages).filter(isRecord);
-          const msg = msgs.find((m) => getString(m.ts) === ts);
+          const msg = await findRawMessage(client, { channelId, ts });
           if (msg) {
             const rendered = renderSlackMessageContent(msg);
             const content =

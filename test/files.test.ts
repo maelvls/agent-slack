@@ -1,8 +1,13 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { SlackDownloadError, downloadSlackFile, tryDownloadSlackFile } from "../src/slack/files.ts";
+import {
+  SlackDownloadError,
+  downloadSlackFile,
+  getDownloadTimeoutMs,
+  tryDownloadSlackFile,
+} from "../src/slack/files.ts";
 import { downloadMessageFiles } from "../src/cli/message-file-downloads.ts";
 import type { SlackAuth } from "../src/slack/client.ts";
 
@@ -58,6 +63,60 @@ describe("downloadSlackFile", () => {
     });
     expect(path).toBe(join(tempDir, "out.txt"));
     expect(await readFile(path, "utf8")).toBe("hello world");
+    // Written via a temp file that is renamed into place, with nothing left behind.
+    expect(await readdir(tempDir)).toEqual(["out.txt"]);
+  });
+
+  test("times out a stalled download instead of hanging", async () => {
+    process.env.AGENT_SLACK_DOWNLOAD_TIMEOUT_MS = "20";
+    try {
+      setFetchMock((_url, init) => {
+        const signal = (init as RequestInit | undefined)?.signal;
+        return new Promise<Response>((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(signal.reason));
+        });
+      });
+      await expect(
+        downloadSlackFile({
+          auth: AUTH,
+          url: "https://files.slack.com/files/slow.bin",
+          destDir: tempDir,
+        }),
+      ).rejects.toThrow("Download timed out after 20ms");
+      expect(await readdir(tempDir)).toEqual([]);
+    } finally {
+      delete process.env.AGENT_SLACK_DOWNLOAD_TIMEOUT_MS;
+    }
+  });
+
+  test("is bounded by the download timeout, not the per-API-call timeout", async () => {
+    process.env.AGENT_SLACK_API_TIMEOUT_MS = "20";
+    try {
+      setFetchMock(
+        () =>
+          new Promise<Response>((resolve) =>
+            setTimeout(() => resolve(new Response("slow but fine")), 60),
+          ),
+      );
+      const path = await downloadSlackFile({
+        auth: AUTH,
+        url: "https://files.slack.com/files/big.bin",
+        destDir: tempDir,
+      });
+      expect(await readFile(path, "utf8")).toBe("slow but fine");
+    } finally {
+      delete process.env.AGENT_SLACK_API_TIMEOUT_MS;
+    }
+  });
+
+  test("download timeout defaults to 5 minutes and ignores invalid values", () => {
+    expect(getDownloadTimeoutMs()).toBe(300_000);
+    process.env.AGENT_SLACK_DOWNLOAD_TIMEOUT_MS = "abc";
+    try {
+      expect(getDownloadTimeoutMs()).toBe(300_000);
+    } finally {
+      delete process.env.AGENT_SLACK_DOWNLOAD_TIMEOUT_MS;
+    }
   });
 
   test("returns cached path when file already exists", async () => {
