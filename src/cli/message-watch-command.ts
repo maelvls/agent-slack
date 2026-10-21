@@ -13,7 +13,7 @@ export function registerMessageWatchCommand(input: { messageCmd: Command; ctx: C
   const watchCmd = input.messageCmd
     .command("watch")
     .description(
-      "Block until someone else posts, then print the new messages and exit (exit code 2 on --timeout). Uses Slack's live websocket, falling back to polling.",
+      "Block until a new message arrives, then print the new messages and exit (exit code 2 on --timeout). Uses Slack's live websocket, falling back to polling.",
     )
     .argument(
       "[target]",
