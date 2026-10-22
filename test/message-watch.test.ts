@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
   parseWatchDuration,
+  isAuthWatchError,
   isTransientWatchError,
+  WatchAuthError,
   retryWhileTransient,
   rtmEventInScope,
   waitForNewMessages,
@@ -53,6 +55,7 @@ describe("parseWatchDuration", () => {
     expect(parseWatchDuration("1.5h", "--timeout")).toBe(5_400_000);
     expect(parseWatchDuration("45", "--timeout")).toBe(45_000);
     expect(parseWatchDuration("250ms", "--settle")).toBe(250);
+    expect(parseWatchDuration("3d", "--auth-retry")).toBe(259_200_000);
   });
 
   test("rejects garbage with the flag name", () => {
@@ -336,5 +339,97 @@ describe("retryWhileTransient", () => {
         },
       }),
     ).rejects.toThrow("fetch failed");
+  });
+});
+
+describe("waitForNewMessages when Slack rejects the credentials", () => {
+  const base = { settleMs: 0, pollIntervalMs: 10, timeoutMs: Number.POSITIVE_INFINITY };
+  const invalidAuth = async (): Promise<never> => {
+    throw new Error("invalid_auth");
+  };
+
+  test("re-reads credentials until they work again, notifying once", async () => {
+    let calls = 0;
+    let reauths = 0;
+    let lost = 0;
+    const logs: string[] = [];
+    const result = await waitForNewMessages({
+      ...base,
+      after: "100.0",
+      fetchNew: async () => (++calls < 4 ? invalidAuth() : [msg("101.0")]),
+      accept: () => true,
+      auth: {
+        retryMs: 10_000,
+        retryIntervalMs: 5,
+        reauth: async () => {
+          reauths++;
+        },
+        onLost: () => lost++,
+      },
+      log: (m) => logs.push(m),
+    });
+    expect(result).toEqual({ messages: [msg("101.0")], timedOut: false });
+    // Every retry re-reads credentials first.
+    expect(reauths).toBe(calls - 1);
+    expect(lost).toBe(1);
+    expect(logs.filter((l) => l.includes("invalid_auth"))).toHaveLength(1);
+    expect(logs).toContain("Slack accepts the credentials again.");
+  });
+
+  test("a failing reauth doesn't end the watch", async () => {
+    let calls = 0;
+    const result = await waitForNewMessages({
+      ...base,
+      after: "100.0",
+      fetchNew: async () => (++calls < 3 ? invalidAuth() : [msg("101.0")]),
+      accept: () => true,
+      auth: {
+        retryMs: 10_000,
+        retryIntervalMs: 5,
+        reauth: async () => {
+          throw new Error("no Slack Desktop");
+        },
+      },
+    });
+    expect(result.messages).toEqual([msg("101.0")]);
+  });
+
+  test("gives up once --auth-retry runs out", async () => {
+    await expect(
+      waitForNewMessages({
+        ...base,
+        after: "100.0",
+        fetchNew: invalidAuth,
+        accept: () => true,
+        auth: { retryMs: 30, retryIntervalMs: 5, reauth: async () => {} },
+      }),
+    ).rejects.toThrow("invalid_auth");
+  });
+
+  test("--auth-retry 0 fails right away, without notifying", async () => {
+    let lost = 0;
+    await expect(
+      waitForNewMessages({
+        ...base,
+        after: "100.0",
+        fetchNew: invalidAuth,
+        accept: () => true,
+        auth: { retryMs: 0, retryIntervalMs: 5, reauth: async () => {}, onLost: () => lost++ },
+      }),
+    ).rejects.toThrow("invalid_auth");
+    expect(lost).toBe(0);
+  });
+});
+
+describe("isAuthWatchError", () => {
+  test("recognizes rejected credentials, and nothing else", () => {
+    expect(isAuthWatchError(new Error("invalid_auth"))).toBe(true);
+    expect(isAuthWatchError(new Error("token_expired"))).toBe(true);
+    expect(
+      isAuthWatchError({ code: "slack_webapi_platform_error", data: { error: "invalid_auth" } }),
+    ).toBe(true);
+    expect(isAuthWatchError(new WatchAuthError("gave up"))).toBe(true);
+    expect(isAuthWatchError(new Error("channel_not_found"))).toBe(false);
+    expect(isAuthWatchError(new TypeError("fetch failed"))).toBe(false);
   });
 });

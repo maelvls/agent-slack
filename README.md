@@ -242,6 +242,7 @@ agent-slack message watch U05BRPTKL6A
 - Messages newer than `--after` (default: the target message) count, so a reply that landed between `send` and `watch` is returned immediately.
 - Messages from your own account count too, since a human sharing the account may be the one answering; pass `--exclude-self` to ignore them. After the first new message it waits `--settle` (default 3s) to collect quick follow-ups.
 - Without `--timeout` it waits until a message arrives. With `--timeout`, if nothing arrives in time it prints `{"timed_out": true, "messages": []}` and exits with code 2.
+- Network loss (laptop asleep, VPN switching) is ridden out. If Slack rejects the credentials mid-watch (the session expired or was signed out), it shows a desktop notification and re-reads the credentials every 5 minutes, re-importing from Slack Desktop if needed, for up to `--auth-retry` (default `3d`). Run `agent-slack auth import-desktop` (or another import) to resume it right away. When `--auth-retry` runs out, or the credentials are already rejected at startup, it exits with code 3.
 
 Agents should run it as a background task (in Claude Code, `run_in_background`) so the session stays usable and is notified when it exits. For watching several threads at once, or to keep reply JSON out of the main context, the skill also bundles a [`slack-watcher`](skills/agent-slack/agents/slack-watcher.md) agent (Haiku) that loops on `message watch` and reports back. `scripts/install-skill.sh` installs it to `~/.claude/agents/`; with `npx skills add`, copy it there yourself.
 

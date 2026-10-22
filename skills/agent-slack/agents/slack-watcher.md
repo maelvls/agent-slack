@@ -28,6 +28,8 @@ Loop:
 2. Exit code 0: replies arrived. Stop looping and report.
    Exit code 2: timed out with nothing new. If your overall deadline has not
    passed, go back to step 1; otherwise report that nobody replied.
+   Exit code 3: Slack rejects the credentials. Don't rerun; report
+   `ERROR: Slack sign-in expired, run agent-slack auth import-desktop` and stop.
    Any other exit code: rerun once without `2>/dev/null` to see the error,
    then report it and stop.
 

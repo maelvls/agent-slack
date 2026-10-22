@@ -55,6 +55,7 @@ Pitfalls:
 - Avoid paging `user list` to find someone; `user search` is one call.
 - To await an answer after `message send`, don't poll with `message list`. Run `message watch <permalink> --max-body-chars 4000` (the `permalink` that `send` printed) as a background task if your harness has one (Claude Code: `run_in_background`); never in the foreground, which blocks the session and hits tool timeouts. With no `--timeout` it waits until a message arrives and exits 0; add `--timeout` only for a real deadline (exit 2 if it passes). Don't poll its output meanwhile. Replies posted before the watch started are still returned. Messages from your own account are included, because the human may reply from it; don't pass `--exclude-self` unless asked.
 - Use the bundled `slack-watcher` agent ([agents/slack-watcher.md](agents/slack-watcher.md), Claude Code) instead only when watching several threads at once, or to keep raw reply JSON out of your context: spawn it in the background with the permalink.
+- `message watch` exit code 3 means Slack rejects the credentials (it already waited out `--auth-retry` for a re-login). Rerunning won't help: ask the human to run `agent-slack auth import-desktop`, then rerun the watch (with the `--after` the error prints, if any, so nothing is missed).
 
 ## Safety
 
