@@ -34,6 +34,8 @@ export type CliContext = {
     | ReturnType<typeof extractFromChrome>;
   importBrave: () => ReturnType<typeof extractFromBrave>;
   importFirefox: () => ReturnType<typeof extractFromFirefox>;
+  /** Re-import credentials from Slack Desktop; false when unavailable or SLACK_TOKEN is set. */
+  refreshFromDesktop: () => Promise<boolean>;
 };
 
 function isEnvAuthConfigured(): boolean {
@@ -132,6 +134,9 @@ function isAuthErrorMessage(message: string): boolean {
 }
 
 async function refreshFromDesktopIfPossible(): Promise<boolean> {
+  if (isEnvAuthConfigured()) {
+    return false;
+  }
   if (
     process.platform !== "darwin" &&
     process.platform !== "linux" &&
@@ -195,5 +200,6 @@ export function createCliContext(): CliContext {
     importChrome: extractFromChrome,
     importBrave: extractFromBrave,
     importFirefox: extractFromFirefox,
+    refreshFromDesktop: refreshFromDesktopIfPossible,
   };
 }

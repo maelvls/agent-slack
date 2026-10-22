@@ -125,6 +125,7 @@ function createContext(
     importChrome: () => ({ cookie_d: "", teams: [] }),
     importBrave: async () => null,
     importFirefox: async () => null,
+    refreshFromDesktop: async () => false,
   } satisfies CliContext;
 }
 

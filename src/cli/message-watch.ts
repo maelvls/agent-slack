@@ -11,6 +11,7 @@ import {
 import { openRtm, type RtmConnection, type RtmMessageEvent } from "../slack/rtm.ts";
 import { pruneEmpty } from "../lib/compact-json.ts";
 import { getString, isRecord } from "../lib/object-type-guards.ts";
+import { notifyDesktop } from "../lib/desktop-notify.ts";
 import { downloadMessageFiles } from "./message-file-downloads.ts";
 import { toThreadListMessage } from "./message-thread-info.ts";
 import {
@@ -26,6 +27,7 @@ export type MessageWatchOptions = {
   threadTs?: string;
   after?: string;
   timeout?: string;
+  authRetry?: string;
   settle?: string;
   pollInterval?: string;
   excludeSelf?: boolean;
@@ -42,22 +44,34 @@ export type WatchScope = {
 };
 
 export const WATCH_TIMEOUT_EXIT_CODE = 2;
+export const WATCH_AUTH_EXIT_CODE = 3;
 
-/** Parse `90s`, `10m`, `1.5h`, or a bare number of seconds into milliseconds. */
+/** How often a watch re-reads credentials while Slack rejects them. */
+const AUTH_RETRY_INTERVAL_MS = 5 * 60_000;
+
+/** Parse `90s`, `10m`, `1.5h`, `3d`, or a bare number of seconds into milliseconds. */
 export function parseWatchDuration(raw: string, flag: string): number {
   const match = raw
     .trim()
     .toLowerCase()
-    .match(/^(\d+(?:\.\d+)?)\s*(ms|s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?)?$/);
+    .match(
+      /^(\d+(?:\.\d+)?)\s*(ms|s|sec|secs|seconds?|m|min|mins|minutes?|h|hr|hrs|hours?|d|days?)?$/,
+    );
   if (!match) {
-    throw new Error(`Invalid ${flag} "${raw}": expected a duration like 90s, 10m, or 1h`);
+    throw new Error(`Invalid ${flag} "${raw}": expected a duration like 90s, 10m, 1h, or 3d`);
   }
   const amount = Number.parseFloat(match[1]!);
   const unit = match[2] ?? "s";
   if (unit === "ms") {
     return Math.round(amount);
   }
-  const multiplier = unit.startsWith("h") ? 3_600_000 : unit.startsWith("m") ? 60_000 : 1000;
+  const multiplier = unit.startsWith("d")
+    ? 86_400_000
+    : unit.startsWith("h")
+      ? 3_600_000
+      : unit.startsWith("m")
+        ? 60_000
+        : 1000;
   return Math.round(amount * multiplier);
 }
 
@@ -70,8 +84,40 @@ const RETRYABLE_SLACK_ERRORS = new Set([
   "request_timeout",
 ]);
 
+const AUTH_SLACK_ERRORS = new Set(["invalid_auth", "token_expired", "token_revoked", "not_authed"]);
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function formatDuration(ms: number): string {
+  if (ms % 86_400_000 === 0) {
+    return `${ms / 86_400_000}d`;
+  }
+  if (ms % 3_600_000 === 0) {
+    return `${ms / 3_600_000}h`;
+  }
+  if (ms % 60_000 === 0) {
+    return `${ms / 60_000}m`;
+  }
+  return `${Math.round(ms / 1000)}s`;
+}
+
+/** A watch gave up because Slack kept rejecting the credentials. */
+export class WatchAuthError extends Error {
+  override name = "WatchAuthError";
+}
+
+/** Whether Slack rejected the credentials themselves (expired session, signed out). */
+export function isAuthWatchError(err: unknown): boolean {
+  if (err instanceof WatchAuthError) {
+    return true;
+  }
+  if (isRecord(err) && err.code === "slack_webapi_platform_error") {
+    const data = isRecord(err.data) ? err.data : undefined;
+    return AUTH_SLACK_ERRORS.has(getString(data?.error) ?? "");
+  }
+  return AUTH_SLACK_ERRORS.has(errorText(err));
 }
 
 /**
@@ -179,6 +225,17 @@ export async function waitForNewMessages(input: {
   settleMs: number;
   pollIntervalMs: number;
   livePollIntervalMs?: number;
+  /**
+   * When Slack rejects the credentials, keep going for `retryMs`, calling `reauth`
+   * every `retryIntervalMs` so re-imported credentials are picked up. Without it,
+   * auth errors throw right away.
+   */
+  auth?: {
+    retryMs: number;
+    retryIntervalMs: number;
+    reauth: () => Promise<void>;
+    onLost?: (err: unknown) => void;
+  };
   log?: (message: string) => void;
 }): Promise<{ messages: SlackMessageSummary[]; timedOut: boolean }> {
   const livePollIntervalMs = input.livePollIntervalMs ?? 60_000;
@@ -211,12 +268,28 @@ export async function waitForNewMessages(input: {
 
   const deadline = Date.now() + input.timeoutMs;
   let offline = false;
+  let authLostAt: number | undefined;
   // undefined means the fetch failed transiently; other errors still throw.
   const fetchMatching = async (): Promise<SlackMessageSummary[] | undefined> => {
     let fetched: SlackMessageSummary[];
     try {
+      if (authLostAt !== undefined) {
+        await input.auth?.reauth().catch(() => {});
+      }
       fetched = await input.fetchNew(input.after);
     } catch (err) {
+      if (input.auth && input.auth.retryMs > 0 && isAuthWatchError(err)) {
+        if (authLostAt === undefined) {
+          authLostAt = Date.now();
+          input.log?.(
+            `Slack rejected the credentials (${errorText(err)}); re-reading them every ${formatDuration(input.auth.retryIntervalMs)} for up to ${formatDuration(input.auth.retryMs)}. To fix it now, run "agent-slack auth import-desktop" (or import-chrome, import-firefox).`,
+          );
+          input.auth.onLost?.(err);
+        } else if (Date.now() - authLostAt >= input.auth.retryMs) {
+          throw err;
+        }
+        return undefined;
+      }
       if (!isTransientWatchError(err)) {
         throw err;
       }
@@ -227,6 +300,10 @@ export async function waitForNewMessages(input: {
         );
       }
       return undefined;
+    }
+    if (authLostAt !== undefined) {
+      authLostAt = undefined;
+      input.log?.("Slack accepts the credentials again.");
     }
     if (offline) {
       offline = false;
@@ -255,7 +332,12 @@ export async function waitForNewMessages(input: {
       if (remaining <= 0) {
         return { messages: [], timedOut: true };
       }
-      const interval = live && !offline ? livePollIntervalMs : input.pollIntervalMs;
+      const interval =
+        authLostAt !== undefined && input.auth
+          ? input.auth.retryIntervalMs
+          : live && !offline
+            ? livePollIntervalMs
+            : input.pollIntervalMs;
       await new Promise<void>((resolve) => {
         const timer = setTimeout(
           () => {
@@ -284,18 +366,40 @@ function subscribeRtm(input: {
   log: (message: string) => void;
 }): Parameters<typeof waitForNewMessages>[0]["subscribe"] {
   return async ({ trigger, setLive }) => {
-    const { client, auth } = await input.ctx.getClientForWorkspace(input.workspaceUrl);
     let stopped = false;
     let conn: RtmConnection | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
+    let reconnectWarned = false;
+
+    const scheduleReconnect = (delayMs: number): void => {
+      retryTimer = setTimeout(() => {
+        if (stopped) {
+          return;
+        }
+        connect().catch((err: unknown) => {
+          // Keep trying (e.g. until credentials are re-imported), but only say so once.
+          if (!reconnectWarned) {
+            reconnectWarned = true;
+            input.log(
+              `Reconnect failed (${err instanceof Error ? err.message : String(err)}); polling until it works again.`,
+            );
+          }
+          conn = undefined;
+          scheduleReconnect(60_000);
+        });
+      }, delayMs);
+    };
 
     const connect = async (): Promise<void> => {
+      // Fresh credentials on every attempt, so re-imported ones take effect.
+      const { client, auth } = await input.ctx.getClientForWorkspace(input.workspaceUrl);
       conn = await openRtm({
         client,
         auth,
         onReady: () => {
           failures = 0;
+          reconnectWarned = false;
           setLive(true);
         },
         onMessage: (event) => {
@@ -310,15 +414,7 @@ function subscribeRtm(input: {
           }
           const delayMs = Math.min(60_000, 2000 * 2 ** failures++);
           input.log(`Live connection lost (${reason}); reconnecting in ${delayMs / 1000}s.`);
-          retryTimer = setTimeout(() => {
-            connect().catch((err: unknown) => {
-              input.log(
-                `Reconnect failed (${err instanceof Error ? err.message : String(err)}); polling until the next attempt.`,
-              );
-              conn = undefined;
-              retryTimer = setTimeout(() => void connect().catch(() => {}), 60_000);
-            });
-          }, delayMs);
+          scheduleReconnect(delayMs);
         },
       });
     };
@@ -398,6 +494,7 @@ export async function handleMessageWatch(input: {
   const timeoutMs = input.options.timeout
     ? parseWatchDuration(input.options.timeout, "--timeout")
     : Number.POSITIVE_INFINITY;
+  const authRetryMs = parseWatchDuration(input.options.authRetry ?? "3d", "--auth-retry");
   const settleMs = parseWatchDuration(input.options.settle ?? "3s", "--settle");
   const pollIntervalMs = Math.max(
     5000,
@@ -412,7 +509,7 @@ export async function handleMessageWatch(input: {
   const { scope, after, workspaceUrl } = await retry("Resolving the watch target", () =>
     resolveWatchScope(input),
   );
-  const { client, auth } = await input.ctx.getClientForWorkspace(workspaceUrl);
+  let { client, auth } = await input.ctx.getClientForWorkspace(workspaceUrl);
   // Own messages count by default: the agent and its human often share one account,
   // and the agent's own message is already excluded by `after`.
   const self = input.options.excludeSelf
@@ -454,18 +551,56 @@ export async function handleMessageWatch(input: {
       .sort((a, b) => Number.parseFloat(a.ts) - Number.parseFloat(b.ts));
   };
 
-  const result = await waitForNewMessages({
-    after,
-    fetchNew,
-    accept: (m) => !self || m.user !== self,
-    subscribe: input.options.noRtm
-      ? undefined
-      : subscribeRtm({ ctx: input.ctx, workspaceUrl, scope, log }),
-    timeoutMs: Math.max(0, deadline - Date.now()),
-    settleMs,
-    pollIntervalMs,
-    log,
-  });
+  // Slack sessions expire (or get signed out) during long watches. Prefer credentials
+  // re-imported into the store; fall back to re-importing from Slack Desktop.
+  const reauth = async (): Promise<void> => {
+    ({ client, auth } = await input.ctx.getClientForWorkspace(workspaceUrl));
+    try {
+      await client.api("auth.test");
+      return;
+    } catch (err) {
+      if (!isAuthWatchError(err)) {
+        return;
+      }
+    }
+    if (await input.ctx.refreshFromDesktop()) {
+      ({ client, auth } = await input.ctx.getClientForWorkspace(workspaceUrl));
+    }
+  };
+
+  let result: Awaited<ReturnType<typeof waitForNewMessages>>;
+  try {
+    result = await waitForNewMessages({
+      after,
+      fetchNew,
+      accept: (m) => !self || m.user !== self,
+      subscribe: input.options.noRtm
+        ? undefined
+        : subscribeRtm({ ctx: input.ctx, workspaceUrl, scope, log }),
+      timeoutMs: Math.max(0, deadline - Date.now()),
+      settleMs,
+      pollIntervalMs,
+      auth: {
+        retryMs: authRetryMs,
+        retryIntervalMs: AUTH_RETRY_INTERVAL_MS,
+        reauth,
+        // The watch usually runs in the background, where nobody reads stderr until it exits.
+        onLost: () =>
+          notifyDesktop(
+            "agent-slack: Slack sign-in expired",
+            `A message watch on ${scope.channelId} is paused. Run: agent-slack auth import-desktop`,
+          ),
+      },
+      log,
+    });
+  } catch (err) {
+    if (isAuthWatchError(err)) {
+      throw new WatchAuthError(
+        `Slack rejected the credentials (${errorText(err)}). Re-import them (e.g. "agent-slack auth import-desktop"), then rerun this watch with --after ${after} so nothing is missed.`,
+      );
+    }
+    throw err;
+  }
 
   // Best-effort extras: if the network drops again here, still print the replies.
   const maxBodyChars = Number.parseInt(input.options.maxBodyChars, 10);

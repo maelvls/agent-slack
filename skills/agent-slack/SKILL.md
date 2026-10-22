@@ -54,6 +54,7 @@ Pitfalls:
 - Don't wrap calls in `timeout` (absent on macOS by default). The CLI has its own watchdog, set with `AGENT_SLACK_COMMAND_TIMEOUT_MS`.
 - Avoid paging `user list` to find someone; `user search` is one call.
 - To await an answer after `message send`, don't poll with `message list`. If a `slack-watcher` agent is available (Claude Code; bundled at [agents/slack-watcher.md](agents/slack-watcher.md)), spawn it in the background with the `permalink` that `send` printed. Otherwise run `message watch <permalink>` as a background task if your harness supports it. Replies posted before the watch started are still returned. Messages from your own account are included, because the human may reply from it; don't pass `--exclude-self` unless asked.
+- `message watch` exit code 3 means Slack rejects the credentials (it already waited out `--auth-retry` for a re-login). Rerunning won't help: ask the human to run `agent-slack auth import-desktop`, then rerun the watch (with the `--after` the error prints, if any, so nothing is missed).
 
 ## Safety
 

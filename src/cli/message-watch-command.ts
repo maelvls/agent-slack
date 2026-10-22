@@ -3,6 +3,8 @@ import type { CliContext } from "./context.ts";
 import { stopCommandWatchdog } from "../lib/command-watchdog.ts";
 import {
   handleMessageWatch,
+  isAuthWatchError,
+  WATCH_AUTH_EXIT_CODE,
   WATCH_TIMEOUT_EXIT_CODE,
   type MessageWatchOptions,
 } from "./message-watch.ts";
@@ -13,7 +15,7 @@ export function registerMessageWatchCommand(input: { messageCmd: Command; ctx: C
   const watchCmd = input.messageCmd
     .command("watch")
     .description(
-      "Block until a new message arrives, then print the new messages and exit (exit code 2 on --timeout). Uses Slack's live websocket, falling back to polling.",
+      "Block until a new message arrives, then print the new messages and exit (exit code 2 on --timeout, 3 when Slack rejects the credentials for longer than --auth-retry). Uses Slack's live websocket, falling back to polling.",
     )
     .argument(
       "[target]",
@@ -37,6 +39,11 @@ export function registerMessageWatchCommand(input: { messageCmd: Command; ctx: C
     .option(
       "--timeout <duration>",
       "Give up after this long, e.g. 90s, 10m, 2h (default: wait until a message arrives)",
+    )
+    .option(
+      "--auth-retry <duration>",
+      "If Slack rejects the credentials mid-watch (e.g. the session expired), keep re-reading them (and re-importing from Slack Desktop) every 5m for this long, with a desktop notification; 0 to exit right away",
+      "3d",
     )
     .option(
       "--settle <duration>",
@@ -96,7 +103,7 @@ export function registerMessageWatchCommand(input: { messageCmd: Command; ctx: C
       }
     } catch (err: unknown) {
       console.error(input.ctx.errorMessage(err));
-      process.exitCode = 1;
+      process.exitCode = isAuthWatchError(err) ? WATCH_AUTH_EXIT_CODE : 1;
     }
   });
 }

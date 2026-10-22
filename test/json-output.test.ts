@@ -41,6 +41,7 @@ function createContext(handler: ApiHandler): CliContext {
     importChrome: () => ({ cookie_d: "", teams: [] }),
     importBrave: async () => null,
     importFirefox: async () => null,
+    refreshFromDesktop: async () => false,
   };
 }
 
