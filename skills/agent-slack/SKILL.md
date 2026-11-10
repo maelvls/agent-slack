@@ -80,11 +80,11 @@ Use `--no-unfurl` with `message send` or `message compose` when the user wants S
 
 Ordinary `message send` and `message edit` calls auto-convert lists. `message send --blocks` and `message edit --blocks` use supplied Block Kit blocks, while `message send --attach` sends its initial comment without automatic list conversion. Both Slack's `<URL|label>` syntax and CommonMark `[label](URL)` links become real link elements, in lists and elsewhere; CommonMark syntax inside a code span or fenced code block is left literal.
 
+Inline styles are Slack mrkdwn only: `*bold*`, `_italic_`, `~strike~`. CommonMark `**bold**` is NOT converted: the inner text turns bold but the outer asterisks stay as literal `*` in the message.
+
 Links cannot be verified by reading a message back. `message get` renders a real link element, a literal `<URL|label>` string and literal CommonMark `[label](URL)` all identically as `[label](URL)`, so a broken link and a working one are indistinguishable in the output. `--resolve-users` discriminates real user mentions from literal `@Uxxx` text, but there is no equivalent for links: the only reliable check is a human looking at the rendered message. Do not report links as verified on the strength of a read-back.
 
 Prefer editing over delete-and-resend when a message has replies: check `thread.length` from `message get` first, since deleting a thread root orphans the conversation under it.
-
-Inline styles are Slack mrkdwn only: `*bold*`, `_italic_`, `~strike~`. CommonMark `**bold**` is NOT converted: the inner text turns bold but the outer asterisks stay as literal `*` in the message.
 
 Slack-native drafts (`message draft list|create|update|delete`) manage drafts that appear in the user's Slack client; `create` posts nothing. `create` and `update` accept repeatable `--attach <path>`; on `update` the files are added to the draft's existing attachments rather than replacing them. They use undocumented session endpoints and require browser-style auth (xoxc/xoxd).
 
