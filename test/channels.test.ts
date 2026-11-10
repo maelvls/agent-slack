@@ -192,4 +192,49 @@ describe("conversations list helpers", () => {
     expect(infoCalls).toHaveLength(2);
     expect(page.channels.map((c) => c.id)).toEqual(["C1", "C2"]);
   });
+
+  test("listConversationsViaCounts falls back to users.counts when client.counts is restricted", async () => {
+    const calls: string[] = [];
+    const client = {
+      api: async (method: string, params: Record<string, unknown>) => {
+        calls.push(method);
+        if (method === "client.counts") {
+          throw new Error("team_is_restricted");
+        }
+        if (method === "users.counts") {
+          return {
+            channels: [
+              { id: "C1", is_member: true },
+              { id: "C2", is_member: false },
+            ],
+            groups: [{ id: "G1", is_member: true, is_mpim: true }],
+            ims: [
+              { id: "D1", is_open: true },
+              { id: "D2", is_open: false },
+            ],
+          };
+        }
+        if (method === "conversations.info") {
+          return { channel: { id: params.channel } };
+        }
+        throw new Error(`unexpected method: ${method}`);
+      },
+    } as unknown as SlackApiClient;
+
+    const page = await listConversationsViaCounts(client, { limit: 100 });
+    expect(page.channels.map((c) => c.id)).toEqual(["C1", "G1", "D1"]);
+    expect(calls.slice(0, 2)).toEqual(["client.counts", "users.counts"]);
+  });
+
+  test("listConversationsViaCounts rethrows non-restricted client.counts errors", async () => {
+    const client = {
+      api: async (method: string) => {
+        if (method === "client.counts") {
+          throw new Error("invalid_auth");
+        }
+        throw new Error(`unexpected method: ${method}`);
+      },
+    } as unknown as SlackApiClient;
+    await expect(listConversationsViaCounts(client)).rejects.toThrow("invalid_auth");
+  });
 });

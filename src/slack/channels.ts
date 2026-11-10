@@ -3,6 +3,7 @@ import { asArray, getString, isRecord } from "../lib/object-type-guards.ts";
 import { cacheChannelIds, getCachedChannelId } from "./channel-cache.ts";
 import { isSlackRateLimitError } from "./rate-limit.ts";
 import { parseSlackChannelUrl } from "./url.ts";
+import { fetchUsersCountsEntries, isRestrictedError } from "./users-counts.ts";
 
 const DEFAULT_CONVERSATION_TYPES = "public_channel,private_channel,im,mpim";
 
@@ -221,8 +222,8 @@ export async function listAllConversations(
 }
 
 /**
- * Enumerate the current user's joined conversations via `client.counts` +
- * `conversations.info`.
+ * Enumerate the current user's joined conversations via `client.counts` (or
+ * `users.counts` when Grid restricts it) + `conversations.info`.
  *
  * This mirrors the slack web client's sidebar method and works on Enterprise
  * Grid, where `users.conversations` / `conversations.list` return
@@ -242,20 +243,30 @@ export async function listConversationsViaCounts(
 ): Promise<ConversationsPage> {
   const limit = normalizeConversationsLimit(options?.limit);
 
-  const resp = await client.api("client.counts", {
-    thread_count_by_channel: true,
-  });
+  let allIds: string[];
+  try {
+    const resp = await client.api("client.counts", {
+      thread_count_by_channel: true,
+    });
+    allIds = [
+      ...asArray(resp.channels).filter(isRecord),
+      ...asArray(resp.mpims).filter(isRecord),
+      ...asArray(resp.ims).filter(isRecord),
+    ]
+      .map((entry) => getString(entry.id))
+      .filter((id): id is string => Boolean(id));
+  } catch (err) {
+    // Newer Grid orgs restrict client.counts too; users.counts still lists
+    // the sidebar (joined channels, open DMs).
+    if (!isRestrictedError(err)) {
+      throw err;
+    }
+    allIds = (await fetchUsersCountsEntries(client))
+      .filter((entry) => entry.is_member)
+      .map((entry) => entry.id);
+  }
 
-  const entries = [
-    ...asArray(resp.channels).filter(isRecord),
-    ...asArray(resp.mpims).filter(isRecord),
-    ...asArray(resp.ims).filter(isRecord),
-  ];
-
-  const ids = entries
-    .map((entry) => getString(entry.id))
-    .filter((id): id is string => Boolean(id))
-    .slice(0, limit);
+  const ids = allIds.slice(0, limit);
 
   const channels = await Promise.all(
     ids.map(async (id) => {
