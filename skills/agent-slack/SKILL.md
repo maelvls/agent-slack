@@ -84,6 +84,8 @@ Links cannot be verified by reading a message back. `message get` renders a real
 
 Prefer editing over delete-and-resend when a message has replies: check `thread.length` from `message get` first, since deleting a thread root orphans the conversation under it.
 
+Inline styles are Slack mrkdwn only: `*bold*`, `_italic_`, `~strike~`. CommonMark `**bold**` is NOT converted: the inner text turns bold but the outer asterisks stay as literal `*` in the message.
+
 Slack-native drafts (`message draft list|create|update|delete`) manage drafts that appear in the user's Slack client; `create` posts nothing. `create` and `update` accept repeatable `--attach <path>`; on `update` the files are added to the draft's existing attachments rather than replacing them. They use undocumented session endpoints and require browser-style auth (xoxc/xoxd).
 
 `user org-chart [user]` returns the manager chain (nearest first), peers, and direct reports as user IDs; add `--resolve-users` for names.
