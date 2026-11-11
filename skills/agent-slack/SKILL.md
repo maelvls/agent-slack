@@ -1,6 +1,6 @@
 ---
 name: agent-slack
-description: "Slack CLI for agents: read URLs/threads/history/unreads/later/huddles/canvases/workflows, create/edit canvases from Markdown, search messages/files, download attachments, lookup users, list/create/invite channels, open DMs, compose messages, manage Slack-native drafts, schedule sends, and explicit sends/edits/deletes/reactions/mark-read/uploads."
+description: "Slack CLI for agents: read URLs/threads/history/unreads/inbox/later/huddles/canvases/workflows, create/edit canvases from Markdown, search messages/files, download attachments, lookup users, list/create/invite channels, open DMs, compose messages, manage Slack-native drafts, schedule sends, and explicit sends/edits/deletes/reactions/mark-read/uploads."
 ---
 
 # agent-slack
@@ -40,6 +40,9 @@ agent-slack user dm-open U123       # just the DM channel ID, e.g. to list its h
 
 # Wait for a reply instead of polling: blocks, then prints only the new messages (exit 2 on timeout)
 agent-slack message watch "https://<ws>.slack.com/archives/C123/p1790000000123456" --timeout 1h
+
+# What needs an answer: unanswered DMs/group DMs, @mentions, new replies in my threads (read-only)
+agent-slack inbox --since 3d
 
 # Search (Slack query syntax works: from:@handle, in:#channel, before:/after:)
 agent-slack search messages "query" --channel C123 --user @handle --after 2026-01-01 --limit 20

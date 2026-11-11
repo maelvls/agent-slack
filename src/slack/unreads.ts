@@ -1,5 +1,10 @@
 import type { SlackApiClient } from "./client.ts";
 import { renderSlackMessageContent } from "./render.ts";
+import {
+  fetchUsersCountsEntries,
+  hasUsersCountsUnreads,
+  isRestrictedError,
+} from "./users-counts.ts";
 
 export type UnreadChannel = {
   channel_id: string;
@@ -48,21 +53,43 @@ export async function fetchUnreads(
   const maxBodyChars = options?.maxBodyChars ?? 4000;
   const skipSystem = options?.skipSystemMessages ?? true;
 
-  const resp = await client.api("client.counts", {
-    thread_count_by_channel: true,
-  });
+  let resp: Record<string, unknown> | null = null;
+  let withUnreads: (ClientCountsEntry & { type: UnreadChannel["channel_type"] })[];
+  try {
+    resp = await client.api("client.counts", {
+      thread_count_by_channel: true,
+    });
+  } catch (err) {
+    // Enterprise Grid restricts client.counts for session tokens; users.counts
+    // still works but has no last_read (taken from conversations.info below)
+    // and no thread counts.
+    if (!isRestrictedError(err)) {
+      throw err;
+    }
+  }
 
-  const channels = asArray(resp.channels).filter(isRecord) as unknown as ClientCountsEntry[];
-  const mpims = asArray(resp.mpims).filter(isRecord) as unknown as ClientCountsEntry[];
-  const ims = asArray(resp.ims).filter(isRecord) as unknown as ClientCountsEntry[];
+  if (resp) {
+    const channels = asArray(resp.channels).filter(isRecord) as unknown as ClientCountsEntry[];
+    const mpims = asArray(resp.mpims).filter(isRecord) as unknown as ClientCountsEntry[];
+    const ims = asArray(resp.ims).filter(isRecord) as unknown as ClientCountsEntry[];
 
-  const allEntries = [
-    ...channels.map((c) => ({ ...c, type: "channel" as const })),
-    ...mpims.map((c) => ({ ...c, type: "mpim" as const })),
-    ...ims.map((c) => ({ ...c, type: "dm" as const })),
-  ];
-
-  const withUnreads = allEntries.filter((c) => c.has_unreads);
+    const allEntries = [
+      ...channels.map((c) => ({ ...c, type: "channel" as const })),
+      ...mpims.map((c) => ({ ...c, type: "mpim" as const })),
+      ...ims.map((c) => ({ ...c, type: "dm" as const })),
+    ];
+    withUnreads = allEntries.filter((c) => c.has_unreads);
+  } else {
+    withUnreads = (await fetchUsersCountsEntries(client))
+      .filter(hasUsersCountsUnreads)
+      .map((e) => ({
+        id: e.id,
+        type: e.type,
+        has_unreads: true,
+        unread_count_display: e.unread_count,
+        mention_count: e.mention_count,
+      }));
+  }
 
   // Resolve channel info and fetch messages in parallel
   const channelInfos = await Promise.all(
@@ -70,6 +97,7 @@ export async function fetchUnreads(
       // 1. Concurrently fetch channel info & user info (if DM)
       const channelInfoPromise = (async () => {
         let name: string | undefined;
+        let lastRead: string | undefined;
         let { type } = entry;
         try {
           const info = await client.api("conversations.info", {
@@ -77,6 +105,7 @@ export async function fetchUnreads(
           });
           const ch = isRecord(info.channel) ? info.channel : null;
           if (ch) {
+            lastRead = getString(ch.last_read);
             name = getString(ch.name) ?? getString(ch.name_normalized) ?? undefined;
             if (ch.is_im) {
               type = "dm";
@@ -106,7 +135,7 @@ export async function fetchUnreads(
         } catch {
           // ignore - name will remain undefined
         }
-        return { name, type };
+        return { name, type, lastRead };
       })();
 
       // 2. Concurrently fetch message history
@@ -115,11 +144,14 @@ export async function fetchUnreads(
         let unreadCount =
           entry.unread_count_display ?? entry.unread_count ?? (entry.has_unreads ? 1 : 0);
 
-        if (includeMessages && entry.last_read) {
+        // client.counts gives last_read directly; users.counts does not.
+        const lastRead =
+          entry.last_read ?? (includeMessages ? (await channelInfoPromise).lastRead : undefined);
+        if (includeMessages && lastRead) {
           try {
             const history = await client.api("conversations.history", {
               channel: entry.id,
-              oldest: entry.last_read,
+              oldest: lastRead,
               limit: maxMessages,
               inclusive: false,
             });
@@ -212,7 +244,7 @@ export async function fetchUnreads(
   });
 
   // Process thread unreads
-  const threads = isRecord(resp.threads) ? resp.threads : null;
+  const threads = resp && isRecord(resp.threads) ? resp.threads : null;
   const threadInfo = threads?.has_unreads
     ? {
         has_unreads: true,

@@ -102,6 +102,8 @@ agent-slack
 │   ├── get <user>
 │   ├── dm-open <users...>
 │   └── org-chart [user]           # manager chain, peers, direct reports
+├── unreads                        # unread counts/messages across channels, DMs, threads
+├── inbox                          # messages waiting on you (unanswered DMs, mentions, threads)
 ├── huddle
 │   └── list                       # huddle history (who, when, how long)
 ├── search
@@ -592,7 +594,47 @@ Output includes channels sorted by mention count, then unread count:
 }
 ```
 
-Note: This feature uses the `client.counts` API which may be restricted in some Enterprise Grid workspaces (`team_is_restricted` error).
+Note: where Enterprise Grid restricts `client.counts` (`team_is_restricted`), `unreads` and `channel list --via-counts` fall back to `users.counts`; `threads` is then `null`.
+
+### Inbox (what's waiting on you)
+
+`unreads` is about read state; `inbox` is about who is waiting for an answer. It is read-only (marks nothing read) and reports:
+
+- `dm` / `mpim`: DMs and group DMs whose newest message isn't yours
+- `mention`: @mentions you haven't answered in the thread (or, for a top-level mention with no replies, later in the channel)
+- `thread`: new replies in threads you've posted in
+
+Your reaction to a message counts as an answer. Bots, Slackbot, and system messages are ignored.
+
+```bash
+agent-slack inbox                      # last 3 days
+agent-slack inbox --since 12h          # or Nd, or YYYY-MM-DD (UTC)
+agent-slack inbox --no-threads --max-body-chars 120
+```
+
+Items are sorted newest first. `count`/`first_ts` cover the messages from others since your last message there; `ts`, `author`, `text`, `permalink` describe the newest one. `thread_ts` is absent for top-level DM/group DM items. `truncated` is `true` when `--max-conversations` (default 60) or the search page cap cut the scan short.
+
+```json
+{
+  "user_id": "U123",
+  "since": "2026-11-07T00:00:00.000Z",
+  "truncated": false,
+  "items": [
+    {
+      "kind": "mention",
+      "channel_id": "C123",
+      "channel_name": "general",
+      "thread_ts": "1794219159.861309",
+      "ts": "1794222538.567359",
+      "first_ts": "1794222538.567359",
+      "count": 1,
+      "author": { "user_id": "U456", "name": "jane" },
+      "text": "...",
+      "permalink": "https://acme.slack.com/archives/C123/p1794222538567359?thread_ts=1794219159.861309&cid=C123"
+    }
+  ]
+}
+```
 
 ### Huddles
 
