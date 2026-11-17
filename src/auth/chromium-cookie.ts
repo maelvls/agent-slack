@@ -32,7 +32,7 @@ export function getSafeStoragePasswords(services: string[]): string[] {
 export async function readSlackCookieFromChromiumDb(input: {
   dbPath: string;
   browser: string;
-  getPasswords: () => string[];
+  getPasswords: () => Iterable<string>;
 }): Promise<string> {
   const { dbPath, browser } = input;
   if (!existsSync(dbPath)) {

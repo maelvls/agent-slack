@@ -28,11 +28,11 @@ export type CliContext = {
   errorMessage: (err: unknown) => string;
   parseContentType: (value: unknown) => "any" | "text" | "image" | "snippet" | "file";
   parseCurl: (curl: string) => ReturnType<typeof parseSlackCurlCommand>;
-  importDesktop: () => ReturnType<typeof extractFromSlackDesktop>;
+  importDesktop: typeof extractFromSlackDesktop;
   importChrome: () =>
     | Awaited<ReturnType<typeof extractFromChrome>>
     | ReturnType<typeof extractFromChrome>;
-  importBrave: () => ReturnType<typeof extractFromBrave>;
+  importBrave: typeof extractFromBrave;
   importFirefox: () => ReturnType<typeof extractFromFirefox>;
   /** Re-import credentials from Slack Desktop; false when unavailable or SLACK_TOKEN is set. */
   refreshFromDesktop: () => Promise<boolean>;

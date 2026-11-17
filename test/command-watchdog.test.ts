@@ -16,4 +16,11 @@ describe("shouldStartCommandWatchdog", () => {
   test("covers Slack-native draft commands, which no longer open the editor", () => {
     expect(shouldStartCommandWatchdog(["message", "draft", "list"])).toBe(true);
   });
+
+  test("skips auth imports that wait on a macOS keychain prompt", () => {
+    expect(shouldStartCommandWatchdog(["auth", "import-desktop"])).toBe(false);
+    expect(shouldStartCommandWatchdog(["auth", "import-brave"])).toBe(false);
+    expect(shouldStartCommandWatchdog(["--safe-mode", "auth", "import-desktop"])).toBe(false);
+    expect(shouldStartCommandWatchdog(["auth", "whoami"])).toBe(true);
+  });
 });

@@ -37,13 +37,21 @@ function arm(timeoutMs: number): void {
 }
 
 /**
- * The watchdog is skipped when there is no command (help output) and for
- * `update`. Leading global options (e.g. `--safe-mode`) are skipped to find
- * the command.
+ * The watchdog is skipped when there is no command (help output), for
+ * `update`, and for `auth import-desktop`/`import-brave`, which may wait on a
+ * macOS keychain prompt the user has to answer. Leading global options (e.g.
+ * `--safe-mode`, none of which take a value) are skipped to find the command.
  */
 export function shouldStartCommandWatchdog(args: string[]): boolean {
-  const command = args.find((arg) => !arg.startsWith("-"));
-  return Boolean(command) && command !== "update";
+  const firstPositional = args.findIndex((arg) => !arg.startsWith("-"));
+  const [command, subcommand] = firstPositional === -1 ? [] : args.slice(firstPositional);
+  if (!command || command === "update") {
+    return false;
+  }
+  if (command === "auth" && (subcommand === "import-desktop" || subcommand === "import-brave")) {
+    return false;
+  }
+  return true;
 }
 
 export function startCommandWatchdog(timeoutMs: number): void {

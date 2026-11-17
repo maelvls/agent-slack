@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { getSafeStoragePasswords, readSlackCookieFromChromiumDb } from "./chromium-cookie.ts";
+import { readSlackCookieFromChromiumDb } from "./chromium-cookie.ts";
+import { KeychainAccessError, macKeychainPasswords, type KeychainOptions } from "./keychain.ts";
 import { isRecord } from "../lib/object-type-guards.ts";
 
 type BraveExtractedTeam = { url: string; name?: string; token: string };
@@ -128,17 +129,24 @@ const BRAVE_SAFE_STORAGE_SERVICES = [
   "Chromium Safe Storage",
 ];
 
-function extractCookieDFromBrave(): Promise<string> {
+function extractCookieDFromBrave(options: KeychainOptions): Promise<string> {
   return readSlackCookieFromChromiumDb({
     dbPath: BRAVE_COOKIES_DB,
     browser: "Brave",
-    getPasswords: () => getSafeStoragePasswords(BRAVE_SAFE_STORAGE_SERVICES),
+    // Lazy: stops prompting at the first password that decrypts the cookie.
+    getPasswords: () =>
+      macKeychainPasswords(
+        BRAVE_SAFE_STORAGE_SERVICES.map((service) => ({ service })),
+        options,
+      ),
   });
 }
 
 // --- Main export ---
 
-export async function extractFromBrave(): Promise<BraveExtracted | null> {
+export async function extractFromBrave(
+  options: KeychainOptions = {},
+): Promise<BraveExtracted | null> {
   if (!IS_MACOS) {
     return null;
   }
@@ -148,7 +156,7 @@ export async function extractFromBrave(): Promise<BraveExtracted | null> {
       return null;
     }
 
-    const cookie_d = await extractCookieDFromBrave();
+    const cookie_d = await extractCookieDFromBrave(options);
     if (!cookie_d || !cookie_d.startsWith("xoxd-")) {
       return null;
     }
@@ -156,6 +164,11 @@ export async function extractFromBrave(): Promise<BraveExtracted | null> {
     return { cookie_d, teams };
   } catch (err) {
     if (err instanceof BraveAppleScriptDisabledError) {
+      throw err;
+    }
+    // Surface keychain timeouts/denials when the user explicitly ran the
+    // import; implicit lookups keep falling back to other sources.
+    if (options.interactive && err instanceof KeychainAccessError) {
       throw err;
     }
     return null;
