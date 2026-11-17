@@ -1,0 +1,68 @@
+# Release configuration (https://goreleaser.com). Run by
+# .github/workflows/release.yml on every v* tag; try it locally with
+# `make snapshot`.
+#
+# RENAMING THE TOOL: the name appears on two lines of this file,
+# `project_name` and `builds[0].main`. Everything else is derived from it.
+version: 2
+
+project_name: slackcli
+
+builds:
+  - id: cli
+    main: ./cmd/slackcli
+    binary: "{{ .ProjectName }}"
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X {{ .ModulePath }}/internal/appinfo.Version=v{{ .Version }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+# CONTRACT with internal/update (AssetName, BinaryName, ChecksumsName) and
+# install.sh: self-update and the installer download
+#   <project>_<os>_<arch>.tar.gz   (.zip on Windows)
+# holding the binary at the root of the archive, and verify it against
+#   checksums.txt                  (sha256sum format)
+# The archive name deliberately has no version in it, so that
+# releases/latest/download/<archive> is a stable URL.
+# internal/update's TestReleaseNamingMatchesTooling fails if the three
+# lines marked "contract" change.
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}" # contract
+    wrap_in_directory: false # contract
+    files:
+      - LICENSE
+
+checksum:
+  name_template: "checksums.txt" # contract
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot.{{ .ShortCommit }}"
+
+changelog:
+  use: github
+  filters:
+    exclude:
+      - "^v[0-9]+\\.[0-9]+\\.[0-9]+"
+
+release:
+  # v1.2.3-rc.1 is published as a pre-release: it is never "latest", so
+  # neither install.sh nor self-update picks it up.
+  prerelease: auto

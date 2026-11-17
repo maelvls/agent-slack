@@ -1,113 +1,176 @@
 #!/bin/sh
+# Installer: downloads the release archive for this machine, verifies its
+# SHA-256 against the release's checksums file and installs the binary.
+#
+#   curl -fsSL https://raw.githubusercontent.com/<repo>/main/install.sh | sh
+#
+# Environment (the prefix is ENV_PREFIX below):
+#   <PREFIX>INSTALL_DIR   directory to install into (default: $PREFIX/bin
+#                         if PREFIX is set, else ~/.local/bin)
+#   <PREFIX>VERSION       release to install, e.g. v1.2.3 (default: latest)
+#   <PREFIX>REPO          GitHub "owner/name" to download from
+#
+# Needs only: sh, uname, mktemp, tar (unzip on Windows), curl or wget, and
+# sha256sum, shasum or openssl.
 set -eu
 
-REPO="${AGENT_SLACK_REPO:-stablyai/agent-slack}"
-BIN_NAME="agent-slack"
-SKIP_VERIFY="${AGENT_SLACK_SKIP_VERIFY:-0}"
+# RENAMING THE TOOL: these three lines are the only place this file names
+# it. They mirror Name, Repo and EnvPrefix in internal/appinfo/appinfo.go.
+NAME="slackcli"
+REPO="maelvls/slackcli"
+ENV_PREFIX="SLACKCLI_"
 
-if [ -n "${AGENT_SLACK_INSTALL_DIR:-}" ]; then
-  INSTALL_DIR="$AGENT_SLACK_INSTALL_DIR"
-else
-  if [ -z "${HOME:-}" ]; then
-    printf '%s\n' "error: HOME is not set; set AGENT_SLACK_INSTALL_DIR to install." >&2
-    exit 1
-  fi
-  INSTALL_DIR="$HOME/.local/bin"
-fi
+# CONTRACT with .goreleaser.yaml and internal/update: the archive is
+# "${NAME}_${os}_${arch}.tar.gz" (.zip on Windows), the binary sits at its
+# root, and its SHA-256 is listed in the release asset below.
+CHECKSUMS="checksums.txt"
 
 log() { printf '%s\n' "$*"; }
-err() { printf '%s\n' "$*" >&2; }
-die() { err "error: $*"; exit 1; }
+die() {
+  printf 'error: %s\n' "$*" >&2
+  exit 1
+}
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# setting FOO prints the value of ${ENV_PREFIX}FOO, or nothing.
+setting() {
+  eval "printf '%s' \"\${${ENV_PREFIX}$1:-}\""
+}
+
 download() {
-  url=$1; dest=$2
+  url=$1
+  dest=$2
   if have curl; then
-    curl -fsSL "$url" -o "$dest"; return
+    curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$url" -o "$dest"
+  elif have wget; then
+    wget -q -O "$dest" "$url"
+  else
+    die "curl or wget is required"
   fi
-  if have wget; then
-    wget -qO "$dest" "$url"; return
-  fi
-  die "curl or wget is required"
 }
 
-hash_file() {
-  file=$1
-  if have sha256sum; then sha256sum "$file" | awk '{print $1}'; return; fi
-  if have shasum; then shasum -a 256 "$file" | awk '{print $1}'; return; fi
-  if have openssl; then openssl dgst -sha256 "$file" | awk '{print $2}'; return; fi
-  die "sha256sum, shasum, or openssl is required to verify downloads"
-}
-
-is_musl() {
-  if have ldd; then
-    ldd --version 2>&1 | grep -qi musl && return 0
-    ldd /bin/sh 2>&1 | grep -qi musl && return 0
+sha256_of() {
+  if have sha256sum; then
+    sha256sum "$1" | awk '{print $1}'
+  elif have shasum; then
+    shasum -a 256 "$1" | awk '{print $1}'
+  elif have openssl; then
+    openssl dgst -sha256 -r "$1" | awk '{print $1}'
+  else
+    die "sha256sum, shasum or openssl is required to verify the download"
   fi
-  ls /lib/ld-musl-*.so* >/dev/null 2>&1 && return 0
-  return 1
 }
 
 detect_platform() {
-  os=$(uname -s 2>/dev/null | tr '[:upper:]' '[:lower:]')
-  case "$os" in
-    linux | darwin) platform="$os" ;;
-    msys* | mingw* | cygwin*) platform="windows" ;;
-    *) die "Unsupported OS: $os" ;;
+  uname_s=$(uname -s)
+  case "$uname_s" in
+    Linux) os="linux" ;;
+    Darwin) os="darwin" ;;
+    MSYS* | MINGW* | CYGWIN*) os="windows" ;;
+    *) die "unsupported operating system: $uname_s (releases exist for Linux, macOS and Windows). With Go installed, try: go install github.com/$REPO/cmd/$NAME@latest" ;;
   esac
 
-  arch=$(uname -m 2>/dev/null)
-  case "$arch" in
-    x86_64 | amd64) arch="x64" ;;
+  uname_m=$(uname -m)
+  case "$uname_m" in
+    x86_64 | amd64) arch="amd64" ;;
     arm64 | aarch64) arch="arm64" ;;
-    *) die "Unsupported architecture: $arch" ;;
+    *) die "unsupported architecture: $uname_m (releases exist for x86_64 and arm64). With Go installed, try: go install github.com/$REPO/cmd/$NAME@latest" ;;
   esac
 
-  musl_suffix=""
-  [ "$platform" = "linux" ] && is_musl && musl_suffix="-musl" || true
-
-  exe_suffix=""
-  [ "$platform" = "windows" ] && exe_suffix=".exe" || true
+  if [ "$os" = "windows" ]; then
+    archive_ext="zip"
+    exe_suffix=".exe"
+  else
+    archive_ext="tar.gz"
+    exe_suffix=""
+  fi
 }
 
 main() {
+  repo=$(setting REPO)
+  repo=${repo:-$REPO}
+
+  install_dir=$(setting INSTALL_DIR)
+  if [ -z "$install_dir" ]; then
+    if [ -n "${PREFIX:-}" ]; then
+      install_dir="$PREFIX/bin"
+    elif [ -n "${HOME:-}" ]; then
+      install_dir="$HOME/.local/bin"
+    else
+      die "HOME is not set; set ${ENV_PREFIX}INSTALL_DIR to the directory to install into"
+    fi
+  fi
+
   detect_platform
+  archive="${NAME}_${os}_${arch}.${archive_ext}"
+  binary="${NAME}${exe_suffix}"
 
-  asset="${BIN_NAME}-${platform}-${arch}${musl_suffix}${exe_suffix}"
-  version="${AGENT_SLACK_VERSION:-}"
+  version=$(setting VERSION)
   if [ -n "$version" ]; then
-    case "$version" in v*) tag="$version" ;; *) tag="v$version" ;; esac
-    base_url="https://github.com/$REPO/releases/download/$tag"
+    case "$version" in
+      v*) tag="$version" ;;
+      *) tag="v$version" ;;
+    esac
+    base_url="https://github.com/$repo/releases/download/$tag"
+    release="release $tag"
   else
-    base_url="https://github.com/$REPO/releases/latest/download"
+    base_url="https://github.com/$repo/releases/latest/download"
+    release="the latest release"
   fi
 
-  tmpdir=$(mktemp -d 2>/dev/null || mktemp -d -t agent-slack.XXXXXX)
-  trap 'rm -rf "$tmpdir"' EXIT HUP INT TERM
-  bin_tmp="$tmpdir/$asset"
-
-  log "Downloading $asset..."
-  download "$base_url/$asset" "$bin_tmp"
-
-  if [ "$SKIP_VERIFY" != "1" ]; then
-    log "Verifying checksum..."
-    sums_tmp="$tmpdir/checksums-sha256.txt"
-    download "$base_url/checksums-sha256.txt" "$sums_tmp"
-    expected=$(awk -v file="$asset" '$2 == file {print $1; exit}' "$sums_tmp")
-    [ -z "$expected" ] && die "Checksum not found for $asset"
-    actual=$(hash_file "$bin_tmp")
-    [ "$expected" != "$actual" ] && die "Checksum mismatch for $asset"
+  if [ "$os" = "windows" ]; then
+    have unzip || die "unzip is required to unpack $archive"
+  else
+    have tar || die "tar is required to unpack $archive"
   fi
 
-  mkdir -p "$INSTALL_DIR"
-  cp "$bin_tmp" "$INSTALL_DIR/$BIN_NAME$exe_suffix"
-  chmod 755 "$INSTALL_DIR/$BIN_NAME$exe_suffix"
-  log "Installed $BIN_NAME to $INSTALL_DIR/$BIN_NAME$exe_suffix"
+  # mktemp -d creates a private (0700) directory with an unpredictable name.
+  tmp=$(mktemp -d 2>/dev/null || mktemp -d -t "$NAME.XXXXXXXX") || die "cannot create a temporary directory"
+  staged=""
+  trap 'rm -rf "$tmp"; [ -z "$staged" ] || rm -f "$staged"' EXIT
+  trap 'exit 1' HUP INT TERM
 
+  log "Downloading $archive from $release of $repo..."
+  download "$base_url/$archive" "$tmp/$archive" ||
+    die "could not download $base_url/$archive ($release may not exist, or may have no build for $os/$arch)"
+  download "$base_url/$CHECKSUMS" "$tmp/$CHECKSUMS" ||
+    die "could not download $base_url/$CHECKSUMS; refusing to install an unverified download"
+
+  # Verification is not optional: there is deliberately no way to skip it.
+  expected=$(awk -v f="$archive" '$2 == f || $2 == "*" f { print $1; exit }' "$tmp/$CHECKSUMS")
+  [ -n "$expected" ] || die "$CHECKSUMS has no entry for $archive; refusing to install an unverified download"
+  actual=$(sha256_of "$tmp/$archive")
+  [ -n "$actual" ] || die "could not compute the SHA-256 of $archive"
+  [ "$expected" = "$actual" ] || die "checksum mismatch for $archive: expected $expected, got $actual"
+  log "Checksum verified."
+
+  # Only the binary is extracted, by name, so the archive cannot write
+  # anywhere else.
+  mkdir "$tmp/unpacked"
+  if [ "$os" = "windows" ]; then
+    unzip -q "$tmp/$archive" "$binary" -d "$tmp/unpacked" || die "could not unpack $archive"
+  else
+    tar -xzf "$tmp/$archive" -C "$tmp/unpacked" "$binary" || die "could not unpack $archive"
+  fi
+  [ -f "$tmp/unpacked/$binary" ] || die "$archive does not contain $binary"
+
+  mkdir -p "$install_dir" || die "cannot create $install_dir; set ${ENV_PREFIX}INSTALL_DIR to a directory you can write to"
+  # Copy next to the destination, then rename: the swap is atomic, and
+  # works even while an older version is running.
+  staged="$install_dir/.$binary.install.$$"
+  cp "$tmp/unpacked/$binary" "$staged" ||
+    die "cannot write to $install_dir; set ${ENV_PREFIX}INSTALL_DIR to a directory you can write to"
+  chmod 755 "$staged"
+  mv -f "$staged" "$install_dir/$binary" || die "cannot replace $install_dir/$binary"
+  staged=""
+
+  log "Installed $install_dir/$binary"
   case ":$PATH:" in
-    *":$INSTALL_DIR:"*) ;;
-    *) log "Add to PATH: export PATH=\"$INSTALL_DIR:\$PATH\"" ;;
+    *":$install_dir:"*) ;;
+    *) log "Add it to your PATH: export PATH=\"$install_dir:\$PATH\"" ;;
   esac
 }
 
+# Everything runs from main, called on the last line, so that a download
+# of this script cut short (curl | sh) executes nothing.
 main "$@"

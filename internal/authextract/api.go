@@ -27,12 +27,32 @@ type Extracted struct {
 	// Source describes where the credentials came from, for messages
 	// (e.g. "Slack Desktop", "Firefox profile default-release").
 	Source string
+	// Paths are the files the credentials were read from, when they came
+	// from files.
+	Paths SourcePaths
+}
+
+// SourcePaths locates the files an extraction read. Unused fields are empty.
+type SourcePaths struct {
+	// LevelDB is the Local Storage directory (Slack Desktop).
+	LevelDB string `json:"leveldb_path,omitempty"`
+	// Profile is the browser profile directory (Firefox).
+	Profile string `json:"profile_path,omitempty"`
+	// Cookies is the cookie database.
+	Cookies string `json:"cookies_path,omitempty"`
+	// LocalStorage is the local storage database (Firefox).
+	LocalStorage string `json:"localstorage_path,omitempty"`
 }
 
 // ErrBraveAppleScriptDisabled is returned by Brave when "Allow JavaScript
 // from Apple Events" is turned off in Brave.
 var ErrBraveAppleScriptDisabled = errors.New(
 	"Brave has JavaScript from Apple Events disabled: enable View → Developer → Allow JavaScript from Apple Events, then retry")
+
+// ErrChromeAppleScriptDisabled is returned by Chrome when "Allow JavaScript
+// from Apple Events" is turned off in Chrome.
+var ErrChromeAppleScriptDisabled = errors.New(
+	"Chrome has JavaScript from Apple Events disabled: enable View → Developer → Allow JavaScript from Apple Events, then retry")
 
 // ErrNotFound is returned (possibly wrapped) by an extractor when the
 // application is not installed, not running, or holds no Slack session. The

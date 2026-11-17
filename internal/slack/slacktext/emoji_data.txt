@@ -1,0 +1,1898 @@
+👍	+1 thumbsup thumbs_up
+👎	-1 thumbsdown thumbs_down
+💯	100 hundred_points
+🔢	1234 input_numbers
+🥇	1st_place_medal first_place first_place_medal
+🥈	2nd_place_medal second_place second_place_medal
+🥉	3rd_place_medal third_place third_place_medal
+🎱	8ball pool_8_ball
+🅰️	a
+🆎	ab
+🧮	abacus
+🔤	abc input_latin_letters
+🔡	abcd input_latin_lowercase
+🉑	accept
+🪗	accordion
+🩹	adhesive_bandage
+🧑	adult person
+🚡	aerial_tramway
+✈️	airplane
+⏰	alarm_clock
+⚗️	alembic
+👽	alien
+🚑	ambulance
+🏺	amphora
+🫀	anatomical_heart
+⚓	anchor
+👼	angel baby_angel
+💢	anger anger_symbol
+😠	angry angry_face
+😧	anguished anguished_face
+🐜	ant
+🍎	apple red_apple
+♒	aquarius
+♈	aries
+◀️	arrow_backward reverse_button
+⏬	arrow_double_down fast_down_button
+⏫	arrow_double_up fast_up_button
+⬇️	arrow_down down_arrow
+🔽	arrow_down_small downwards_button
+▶️	arrow_forward play_button
+⤵️	arrow_heading_down right_arrow_curving_down
+⤴️	arrow_heading_up right_arrow_curving_up
+⬅️	arrow_left left_arrow
+↙️	arrow_lower_left down-left_arrow
+↘️	arrow_lower_right down-right_arrow
+➡️	arrow_right right_arrow
+↪️	arrow_right_hook left_arrow_curving_right
+⬆️	arrow_up up_arrow
+↕️	arrow_up_down up-down_arrow
+🔼	arrow_up_small upwards_button
+↖️	arrow_upper_left up-left_arrow
+↗️	arrow_upper_right up-right_arrow
+🔃	arrows_clockwise clockwise_vertical_arrows
+🔄	arrows_counterclockwise counterclockwise_arrows_button
+🎨	art artist_palette
+🚛	articulated_lorry
+🧑‍🎨	artist
+*️⃣	asterisk keycap_star
+😲	astonished astonished_face
+🧑‍🚀	astronaut
+👟	athletic_shoe running_shoe
+🏧	atm
+⚛️	atom_symbol atom
+🛺	auto_rickshaw
+🥑	avocado
+🪓	axe
+🅱️	b
+👶	baby
+🍼	baby_bottle
+🐤	baby_chick
+🚼	baby_symbol
+🔙	back
+🥓	bacon
+🦡	badger
+🏸	badminton badminton_racquet_and_shuttlecock
+🥯	bagel
+🛄	baggage_claim
+🥖	baguette_bread french_bread
+⚖️	balance_scale scales
+🦲	bald
+👨‍🦲	bald_man man_bald
+🧑‍🦲	bald_person person_bald
+👩‍🦲	bald_woman woman_bald
+🩰	ballet_shoes
+🎈	balloon
+🗳️	ballot_box ballot_box_with_ballot
+☑️	ballot_box_with_check check_box_with_check
+🎍	bamboo pine_decoration
+🍌	banana
+‼️	bangbang double_exclamation_mark
+🪕	banjo
+🏦	bank
+📊	bar_chart
+💈	barber barber_pole
+⚾	baseball
+🧺	basket
+🏀	basketball
+🦇	bat
+🛀	bath person_taking_bath
+🛁	bathtub
+🔋	battery
+🏖️	beach beach_with_umbrella
+⛱️	beach_umbrella parasol_on_ground umbrella_on_ground
+🫘	beans
+🐻	bear
+🧔	bearded_person person_beard
+🦫	beaver
+🛏️	bed
+🍺	beer beer_mug
+🍻	beers clinking_beer_mugs
+🪲	beetle
+🔰	beginner
+🔔	bell
+🫑	bell_pepper
+🛎️	bellhop_bell bellhop
+🍱	bento bento_box
+🧃	beverage_box
+🚲	bike bicycle
+👙	bikini
+🧢	billed_hat billed_cap
+☣️	biohazard biohazard_sign
+🐦	bird
+🎂	birthday birthday_cake
+🦬	bison
+🫦	biting_lip
+🐦‍⬛	black_bird
+🐈‍⬛	black_cat
+⚫	black_circle
+🏴	black_flag flag_black waving_black_flag
+🖤	black_heart
+🃏	black_joker joker
+⬛	black_large_square
+◾	black_medium_small_square black_medium-small_square
+◼️	black_medium_square
+✒️	black_nib
+▪️	black_small_square
+🔲	black_square_button
+👱‍♂️	blond-haired-man man_blond_hair blond-haired_man blond_haired_man person_with_blond_hair
+👱‍♀️	blond-haired-woman blonde_woman woman_blond_hair blond-haired_woman blond_haired_woman
+👱	blonde_man person_blond_hair blond_haired_person
+🌼	blossom
+🐡	blowfish
+📘	blue_book
+🚙	blue_car sport_utility_vehicle
+💙	blue_heart
+🟦	blue_square large_blue_square
+🫐	blueberries
+😊	blush smiling_face_with_smiling_eyes
+🐗	boar
+💣	bomb
+🦴	bone
+🔖	bookmark
+📑	bookmark_tabs
+📚	books
+💥	boom collision
+🪃	boomerang
+👢	boot
+⛹️	bouncing_ball_person person_bouncing_ball
+💐	bouquet
+🙇	bow person_bowing
+🏹	bow_and_arrow
+🥣	bowl_with_spoon
+🎳	bowling
+🥊	boxing_glove
+👦	boy
+🧠	brain
+🍞	bread
+🤱	breast-feeding breastfeeding breast_feeding
+🧱	brick bricks
+👰	bride_with_veil person_with_veil
+🌉	bridge_at_night
+💼	briefcase
+🩲	briefs swim_brief
+🥦	broccoli
+⛓️‍💥	broken_chain
+💔	broken_heart
+🧹	broom
+🟤	brown_circle large_brown_circle
+🤎	brown_heart
+🍄‍🟫	brown_mushroom
+🟫	brown_square large_brown_square
+🧋	bubble_tea
+🫧	bubbles
+🪣	bucket
+🐛	bug
+🏗️	building_construction construction_site
+💡	bulb light_bulb
+🚅	bullettrain_front bullet_train
+🚄	bullettrain_side high-speed_train
+🌯	burrito
+🚌	bus
+🕴️	business_suit_levitating person_in_suit_levitating man_in_business_suit_levitating
+🚏	busstop bus_stop
+👤	bust_in_silhouette
+👥	busts_in_silhouette
+🧈	butter
+🦋	butterfly
+🌵	cactus
+🍰	cake shortcake
+📆	calendar tear-off_calendar
+🤙	call_me_hand call_me
+📲	calling mobile_phone_with_arrow
+🐫	camel two-hump_camel
+📷	camera
+📸	camera_flash camera_with_flash
+🏕️	camping
+♋	cancer
+🕯️	candle
+🍬	candy
+🥫	canned_food
+🛶	canoe
+🔠	capital_abcd input_latin_uppercase
+♑	capricorn
+🗃️	card_file_box card_box
+📇	card_index
+🗂️	card_index_dividers dividers
+🎠	carousel_horse
+🪚	carpentry_saw
+🥕	carrot
+🤸	cartwheeling person_cartwheeling person_doing_cartwheel
+🐱	cat cat_face
+🐈	cat2
+💿	cd optical_disk
+⛓️	chains
+🪑	chair
+🍾	champagne bottle_with_popping_cork
+💹	chart chart_increasing_with_yen
+📉	chart_with_downwards_trend chart_decreasing
+📈	chart_with_upwards_trend chart_increasing
+🏁	checkered_flag chequered_flag
+🧀	cheese cheese_wedge
+🍒	cherries
+🌸	cherry_blossom
+♟️	chess_pawn
+🌰	chestnut
+🐔	chicken
+🧒	child
+🚸	children_crossing
+🐿️	chipmunk
+🍫	chocolate_bar
+🥢	chopsticks
+🎄	christmas_tree
+⛪	church
+🎦	cinema
+🎪	circus_tent
+🌇	city_sunrise sunset
+🌆	city_sunset city_dusk cityscape_at_dusk
+🏙️	cityscape
+🆑	cl
+🗜️	clamp compression
+👏	clap clapping_hands
+🎬	clapper clapper_board
+🏛️	classical_building
+🧗	climbing
+🧗‍♂️	climbing_man man_climbing
+🧗‍♀️	climbing_woman woman_climbing person_climbing
+🥂	clinking_glasses champagne_glass
+📋	clipboard
+🕐	clock1
+🕙	clock10
+🕚	clock11
+🕛	clock12
+🕑	clock2
+🕒	clock3
+🕓	clock4
+🕔	clock5
+🕕	clock6
+🕖	clock7
+🕗	clock8
+🕘	clock9
+📕	closed_book
+🔐	closed_lock_with_key locked_with_key
+🌂	closed_umbrella
+☁️	cloud
+🌩️	cloud_with_lightning lightning cloud_lightning
+⛈️	cloud_with_lightning_and_rain thunder_cloud_rain thunder_cloud_and_rain
+🌧️	cloud_with_rain cloud_rain rain_cloud
+🌨️	cloud_with_snow cloud_snow snow_cloud
+🤡	clown_face clown
+♣️	clubs club_suit
+🇨🇳	cn flag_cn
+🧥	coat
+🪳	cockroach
+🍸	cocktail cocktail_glass
+🥥	coconut
+☕	coffee hot_beverage
+⚰️	coffin
+🪙	coin
+🥶	cold_face cold
+😰	cold_sweat anxious_face_with_sweat
+☄️	comet
+🧭	compass
+💻	computer laptop
+🖱️	computer_mouse mouse_three_button three_button_mouse
+🎊	confetti_ball
+😖	confounded confounded_face
+😕	confused confused_face
+㊗️	congratulations
+🚧	construction
+🎛️	control_knobs
+🏪	convenience_store
+🧑‍🍳	cook
+🍪	cookie
+🆒	cool
+©️	copyright
+🪸	coral
+🌽	corn ear_of_corn
+🛋️	couch_and_lamp couch
+👫	couple man_and_woman_holding_hands woman_and_man_holding_hands
+💑	couple_with_heart
+💏	couplekiss
+🐮	cow cow_face
+🐄	cow2
+🦀	crab
+🖍️	crayon lower_left_crayon
+💳	credit_card
+🌙	crescent_moon
+🦗	cricket grasshopper
+🏏	cricket_game cricket_bat_and_ball
+🐊	crocodile
+🥐	croissant
+🤞	crossed_fingers fingers_crossed
+🎌	crossed_flags
+⚔️	crossed_swords
+👑	crown
+🩼	crutch
+😢	cry crying_face
+😿	crying_cat_face crying_cat
+🔮	crystal_ball
+🥒	cucumber
+🥤	cup_with_straw
+🧁	cupcake
+💘	cupid heart_with_arrow
+🥌	curling_stone
+🦱	curly_hair
+➰	curly_loop
+💱	currency_exchange
+🍛	curry curry_rice
+🍮	custard
+🛃	customs
+🌀	cyclone
+🗡️	dagger dagger_knife
+💃	dancer woman_dancing
+🍡	dango
+🕶️	dark_sunglasses
+🎯	dart bullseye
+💨	dash dashing_away
+📅	date
+🇩🇪	de flag_de
+🧏‍♂️	deaf_man
+🧏	deaf_person
+🧏‍♀️	deaf_woman
+🌳	deciduous_tree
+🦌	deer
+🏬	department_store
+🏚️	derelict_house house_abandoned derelict_house_building
+🏜️	desert
+🏝️	desert_island island
+🖥️	desktop_computer desktop
+🕵	detective
+💠	diamond_shape_with_a_dot_inside diamond_with_a_dot
+♦️	diamonds diamond_suit
+😞	disappointed disappointed_face
+😥	disappointed_relieved sad_but_relieved_face
+🥸	disguised_face
+🤿	diving_mask
+🪔	diya_lamp
+💫	dizzy
+😵	dizzy_face face_with_crossed-out_eyes
+🧬	dna
+🚯	do_not_litter no_littering
+🦤	dodo
+🐶	dog dog_face
+🐕	dog2
+💵	dollar dollar_banknote
+🎎	dolls
+🐬	dolphin flipper
+🫏	donkey
+🚪	door
+🫥	dotted_line_face
+🍩	doughnut
+🕊️	dove dove_of_peace
+🐉	dragon
+🐲	dragon_face
+👗	dress
+🐪	dromedary_camel
+🤤	drooling_face
+🩸	drop_of_blood
+💧	droplet
+🥁	drum drum_with_drumsticks
+🦆	duck
+🥟	dumpling
+📀	dvd
+📧	e-mail
+🦅	eagle
+👂	ear
+🌾	ear_of_rice sheaf_of_rice
+🦻	ear_with_hearing_aid
+🌍	earth_africa
+🌎	earth_americas
+🌏	earth_asia
+🥚	egg
+🍆	eggplant
+8️⃣	eight keycap_8
+🕣	eight-thirty clock830
+✴️	eight_pointed_black_star eight-pointed_star
+✳️	eight_spoked_asterisk eight-spoked_asterisk
+⏏️	eject_button eject
+🔌	electric_plug
+🐘	elephant
+🛗	elevator
+🕦	eleven-thirty clock1130
+✉️	email envelope
+🪹	empty_nest
+🔚	end
+📩	envelope_with_arrow
+🇪🇸	es flag_es
+💶	euro euro_banknote
+🏰	european_castle castle
+🏤	european_post_office
+🌲	evergreen_tree
+❗	exclamation red_exclamation_mark heavy_exclamation_mark
+🤯	exploding_head
+😑	expressionless expressionless_face
+👁️	eye
+👁️‍🗨️	eye-in-speech-bubble eye_speech_bubble eye_in_speech_bubble
+👓	eyeglasses glasses
+👀	eyes
+😮‍💨	face_exhaling
+🥹	face_holding_back_tears
+😶‍🌫️	face_in_clouds
+🤦	face_palm facepalm person_facepalming
+🤮	face_vomiting vomiting vomiting_face
+🤠	face_with_cowboy_hat cowboy_hat_face cowboy
+🫤	face_with_diagonal_mouth
+🤭	face_with_hand_over_mouth hand_over_mouth
+🤕	face_with_head_bandage head_bandage face_with_head-bandage
+🧐	face_with_monocle monocle monocle_face
+🫢	face_with_open_eyes_and_hand_over_mouth
+🫣	face_with_peeking_eye
+🤨	face_with_raised_eyebrow raised_eyebrow
+🙄	face_with_rolling_eyes roll_eyes rolling_eyes
+😵‍💫	face_with_spiral_eyes
+🤬	face_with_symbols_on_mouth symbols_over_mouth cursing_face face_with_symbols_over_mouth
+🤒	face_with_thermometer thermometer_face
+👊	facepunch punch fist_oncoming oncoming_fist
+🏭	factory
+🧑‍🏭	factory_worker
+🧆	falafel
+🍂	fallen_leaf
+🧑‍🧑‍🧒	family_adult_adult_child
+🧑‍🧑‍🧒‍🧒	family_adult_adult_child_child
+🧑‍🧒	family_adult_child
+🧑‍🧒‍🧒	family_adult_child_child
+🧑‍🌾	farmer
+⏩	fast_forward fast-forward_button
+📠	fax fax_machine
+😨	fearful fearful_face
+🪶	feather
+👩‍🎨	female-artist woman_artist
+👩‍🚀	female-astronaut woman_astronaut
+👷‍♀️	female-construction-worker construction_worker_woman woman_construction_worker
+👩‍🍳	female-cook woman_cook
+🕵️‍♀️	female-detective female_detective woman_detective
+👩‍⚕️	female-doctor woman_health_worker
+👩‍🏭	female-factory-worker woman_factory_worker
+👩‍🌾	female-farmer woman_farmer
+👩‍🚒	female-firefighter woman_firefighter
+💂‍♀️	female-guard guardswoman woman_guard
+👩‍⚖️	female-judge woman_judge
+👩‍🔧	female-mechanic woman_mechanic
+👩‍💼	female-office-worker woman_office_worker
+👩‍✈️	female-pilot woman_pilot
+👮‍♀️	female-police-officer policewoman woman_police_officer
+👩‍🔬	female-scientist woman_scientist
+👩‍🎤	female-singer woman_singer
+👩‍🎓	female-student woman_student
+👩‍🏫	female-teacher woman_teacher
+👩‍💻	female-technologist woman_technologist
+♀️	female_sign
+🎡	ferris_wheel
+⛴️	ferry
+🏑	field_hockey field_hockey_stick_and_ball
+🗄️	file_cabinet
+📁	file_folder
+📽️	film_projector projector
+🎞️	film_strip film_frames
+🔥	fire
+🚒	fire_engine
+🧯	fire_extinguisher
+🧨	firecracker
+🧑‍🚒	firefighter
+🎆	fireworks
+🌓	first_quarter_moon
+🌛	first_quarter_moon_with_face first_quarter_moon_face
+🐟	fish
+🍥	fish_cake fish_cake_with_swirl
+🎣	fishing_pole_and_fish fishing_pole
+✊	fist fist_raised raised_fist
+5️⃣	five keycap_5
+🕠	five-thirty clock530
+🇦🇨	flag-ac flag_ac ascension_island
+🇦🇩	flag-ad andorra flag_ad
+🇦🇪	flag-ae united_arab_emirates flag_ae
+🇦🇫	flag-af afghanistan flag_af
+🇦🇬	flag-ag antigua_barbuda flag_ag
+🇦🇮	flag-ai anguilla flag_ai
+🇦🇱	flag-al albania flag_al
+🇦🇲	flag-am armenia flag_am
+🇦🇴	flag-ao angola flag_ao
+🇦🇶	flag-aq antarctica flag_aq
+🇦🇷	flag-ar argentina flag_ar
+🇦🇸	flag-as american_samoa flag_as
+🇦🇹	flag-at austria flag_at
+🇦🇺	flag-au australia flag_au
+🇦🇼	flag-aw aruba flag_aw
+🇦🇽	flag-ax aland_islands flag_ax
+🇦🇿	flag-az azerbaijan flag_az
+🇧🇦	flag-ba bosnia_herzegovina flag_ba
+🇧🇧	flag-bb barbados flag_bb
+🇧🇩	flag-bd bangladesh flag_bd
+🇧🇪	flag-be belgium flag_be
+🇧🇫	flag-bf burkina_faso flag_bf
+🇧🇬	flag-bg bulgaria flag_bg
+🇧🇭	flag-bh bahrain flag_bh
+🇧🇮	flag-bi burundi flag_bi
+🇧🇯	flag-bj benin flag_bj
+🇧🇱	flag-bl st_barthelemy flag_bl
+🇧🇲	flag-bm bermuda flag_bm
+🇧🇳	flag-bn brunei flag_bn
+🇧🇴	flag-bo bolivia flag_bo
+🇧🇶	flag-bq caribbean_netherlands flag_bq
+🇧🇷	flag-br brazil flag_br
+🇧🇸	flag-bs bahamas flag_bs
+🇧🇹	flag-bt bhutan flag_bt
+🇧🇻	flag-bv flag_bv bouvet_island
+🇧🇼	flag-bw botswana flag_bw
+🇧🇾	flag-by belarus flag_by
+🇧🇿	flag-bz belize flag_bz
+🇨🇦	flag-ca canada flag_ca
+🇨🇨	flag-cc cocos_islands flag_cc
+🇨🇩	flag-cd congo_kinshasa flag_cd
+🇨🇫	flag-cf central_african_republic flag_cf
+🇨🇬	flag-cg congo_brazzaville flag_cg
+🇨🇭	flag-ch switzerland flag_ch
+🇨🇮	flag-ci cote_divoire flag_ci
+🇨🇰	flag-ck cook_islands flag_ck
+🇨🇱	flag-cl chile flag_cl
+🇨🇲	flag-cm cameroon flag_cm
+🇨🇴	flag-co colombia flag_co
+🇨🇵	flag-cp flag_cp clipperton_island
+🇨🇷	flag-cr costa_rica flag_cr
+🇨🇺	flag-cu cuba flag_cu
+🇨🇻	flag-cv cape_verde flag_cv
+🇨🇼	flag-cw curacao flag_cw
+🇨🇽	flag-cx christmas_island flag_cx
+🇨🇾	flag-cy cyprus flag_cy
+🇨🇿	flag-cz czech_republic flag_cz
+🇩🇬	flag-dg flag_dg diego_garcia
+🇩🇯	flag-dj djibouti flag_dj
+🇩🇰	flag-dk denmark flag_dk
+🇩🇲	flag-dm dominica flag_dm
+🇩🇴	flag-do dominican_republic flag_do
+🇩🇿	flag-dz algeria flag_dz
+🇪🇦	flag-ea flag_ea ceuta_melilla
+🇪🇨	flag-ec ecuador flag_ec
+🇪🇪	flag-ee estonia flag_ee
+🇪🇬	flag-eg egypt flag_eg
+🇪🇭	flag-eh western_sahara flag_eh
+🏴󠁧󠁢󠁥󠁮󠁧󠁿	flag-england england
+🇪🇷	flag-er eritrea flag_er
+🇪🇹	flag-et ethiopia flag_et
+🇪🇺	flag-eu eu flag_eu european_union
+🇫🇮	flag-fi finland flag_fi
+🇫🇯	flag-fj fiji flag_fj
+🇫🇰	flag-fk falkland_islands flag_fk
+🇫🇲	flag-fm micronesia flag_fm
+🇫🇴	flag-fo faroe_islands flag_fo
+🇬🇦	flag-ga gabon flag_ga
+🇬🇩	flag-gd grenada flag_gd
+🇬🇪	flag-ge georgia flag_ge
+🇬🇫	flag-gf french_guiana flag_gf
+🇬🇬	flag-gg guernsey flag_gg
+🇬🇭	flag-gh ghana flag_gh
+🇬🇮	flag-gi gibraltar flag_gi
+🇬🇱	flag-gl greenland flag_gl
+🇬🇲	flag-gm gambia flag_gm
+🇬🇳	flag-gn guinea flag_gn
+🇬🇵	flag-gp guadeloupe flag_gp
+🇬🇶	flag-gq equatorial_guinea flag_gq
+🇬🇷	flag-gr greece flag_gr
+🇬🇸	flag-gs south_georgia_south_sandwich_islands flag_gs
+🇬🇹	flag-gt guatemala flag_gt
+🇬🇺	flag-gu guam flag_gu
+🇬🇼	flag-gw guinea_bissau flag_gw
+🇬🇾	flag-gy guyana flag_gy
+🇭🇰	flag-hk hong_kong flag_hk
+🇭🇲	flag-hm flag_hm heard_mcdonald_islands
+🇭🇳	flag-hn honduras flag_hn
+🇭🇷	flag-hr croatia flag_hr
+🇭🇹	flag-ht haiti flag_ht
+🇭🇺	flag-hu hungary flag_hu
+🇮🇨	flag-ic canary_islands flag_ic
+🇮🇩	flag-id indonesia flag_id
+🇮🇪	flag-ie ireland flag_ie
+🇮🇱	flag-il israel flag_il
+🇮🇲	flag-im isle_of_man flag_im
+🇮🇳	flag-in india flag_in
+🇮🇴	flag-io british_indian_ocean_territory flag_io
+🇮🇶	flag-iq iraq flag_iq
+🇮🇷	flag-ir iran flag_ir
+🇮🇸	flag-is iceland flag_is
+🇯🇪	flag-je jersey flag_je
+🇯🇲	flag-jm jamaica flag_jm
+🇯🇴	flag-jo jordan flag_jo
+🇰🇪	flag-ke kenya flag_ke
+🇰🇬	flag-kg kyrgyzstan flag_kg
+🇰🇭	flag-kh cambodia flag_kh
+🇰🇮	flag-ki kiribati flag_ki
+🇰🇲	flag-km comoros flag_km
+🇰🇳	flag-kn st_kitts_nevis flag_kn
+🇰🇵	flag-kp north_korea flag_kp
+🇰🇼	flag-kw kuwait flag_kw
+🇰🇾	flag-ky cayman_islands flag_ky
+🇰🇿	flag-kz kazakhstan flag_kz
+🇱🇦	flag-la laos flag_la
+🇱🇧	flag-lb lebanon flag_lb
+🇱🇨	flag-lc st_lucia flag_lc
+🇱🇮	flag-li liechtenstein flag_li
+🇱🇰	flag-lk sri_lanka flag_lk
+🇱🇷	flag-lr liberia flag_lr
+🇱🇸	flag-ls lesotho flag_ls
+🇱🇹	flag-lt lithuania flag_lt
+🇱🇺	flag-lu luxembourg flag_lu
+🇱🇻	flag-lv latvia flag_lv
+🇱🇾	flag-ly libya flag_ly
+🇲🇦	flag-ma morocco flag_ma
+🇲🇨	flag-mc monaco flag_mc
+🇲🇩	flag-md moldova flag_md
+🇲🇪	flag-me montenegro flag_me
+🇲🇫	flag-mf flag_mf st_martin
+🇲🇬	flag-mg madagascar flag_mg
+🇲🇭	flag-mh marshall_islands flag_mh
+🇲🇰	flag-mk macedonia flag_mk
+🇲🇱	flag-ml mali flag_ml
+🇲🇲	flag-mm myanmar flag_mm
+🇲🇳	flag-mn mongolia flag_mn
+🇲🇴	flag-mo macau flag_mo
+🇲🇵	flag-mp northern_mariana_islands flag_mp
+🇲🇶	flag-mq martinique flag_mq
+🇲🇷	flag-mr mauritania flag_mr
+🇲🇸	flag-ms montserrat flag_ms
+🇲🇹	flag-mt malta flag_mt
+🇲🇺	flag-mu mauritius flag_mu
+🇲🇻	flag-mv maldives flag_mv
+🇲🇼	flag-mw malawi flag_mw
+🇲🇽	flag-mx mexico flag_mx
+🇲🇾	flag-my malaysia flag_my
+🇲🇿	flag-mz mozambique flag_mz
+🇳🇦	flag-na namibia flag_na
+🇳🇨	flag-nc new_caledonia flag_nc
+🇳🇪	flag-ne niger flag_ne
+🇳🇫	flag-nf norfolk_island flag_nf
+🇳🇬	flag-ng nigeria flag_ng
+🇳🇮	flag-ni nicaragua flag_ni
+🇳🇱	flag-nl netherlands flag_nl
+🇳🇴	flag-no norway flag_no
+🇳🇵	flag-np nepal flag_np
+🇳🇷	flag-nr nauru flag_nr
+🇳🇺	flag-nu niue flag_nu
+🇳🇿	flag-nz new_zealand flag_nz
+🇴🇲	flag-om oman flag_om
+🇵🇦	flag-pa panama flag_pa
+🇵🇪	flag-pe peru flag_pe
+🇵🇫	flag-pf french_polynesia flag_pf
+🇵🇬	flag-pg papua_new_guinea flag_pg
+🇵🇭	flag-ph philippines flag_ph
+🇵🇰	flag-pk pakistan flag_pk
+🇵🇱	flag-pl poland flag_pl
+🇵🇲	flag-pm st_pierre_miquelon flag_pm
+🇵🇳	flag-pn pitcairn_islands flag_pn
+🇵🇷	flag-pr puerto_rico flag_pr
+🇵🇸	flag-ps palestinian_territories flag_ps
+🇵🇹	flag-pt portugal flag_pt
+🇵🇼	flag-pw palau flag_pw
+🇵🇾	flag-py paraguay flag_py
+🇶🇦	flag-qa qatar flag_qa
+🇷🇪	flag-re reunion flag_re
+🇷🇴	flag-ro romania flag_ro
+🇷🇸	flag-rs serbia flag_rs
+🇷🇼	flag-rw rwanda flag_rw
+🇸🇦	flag-sa saudi_arabia flag_sa
+🇸🇧	flag-sb solomon_islands flag_sb
+🇸🇨	flag-sc seychelles flag_sc
+🏴󠁧󠁢󠁳󠁣󠁴󠁿	flag-scotland scotland
+🇸🇩	flag-sd sudan flag_sd
+🇸🇪	flag-se sweden flag_se
+🇸🇬	flag-sg singapore flag_sg
+🇸🇭	flag-sh st_helena flag_sh
+🇸🇮	flag-si slovenia flag_si
+🇸🇯	flag-sj flag_sj svalbard_jan_mayen
+🇸🇰	flag-sk slovakia flag_sk
+🇸🇱	flag-sl sierra_leone flag_sl
+🇸🇲	flag-sm san_marino flag_sm
+🇸🇳	flag-sn senegal flag_sn
+🇸🇴	flag-so somalia flag_so
+🇸🇷	flag-sr suriname flag_sr
+🇸🇸	flag-ss south_sudan flag_ss
+🇸🇹	flag-st sao_tome_principe flag_st
+🇸🇻	flag-sv el_salvador flag_sv
+🇸🇽	flag-sx sint_maarten flag_sx
+🇸🇾	flag-sy syria flag_sy
+🇸🇿	flag-sz swaziland flag_sz
+🇹🇦	flag-ta flag_ta tristan_da_cunha
+🇹🇨	flag-tc turks_caicos_islands flag_tc
+🇹🇩	flag-td chad flag_td
+🇹🇫	flag-tf french_southern_territories flag_tf
+🇹🇬	flag-tg togo flag_tg
+🇹🇭	flag-th thailand flag_th
+🇹🇯	flag-tj tajikistan flag_tj
+🇹🇰	flag-tk tokelau flag_tk
+🇹🇱	flag-tl timor_leste flag_tl
+🇹🇲	flag-tm turkmenistan flag_tm
+🇹🇳	flag-tn tunisia flag_tn
+🇹🇴	flag-to tonga flag_to
+🇹🇷	flag-tr tr flag_tr
+🇹🇹	flag-tt trinidad_tobago flag_tt
+🇹🇻	flag-tv tuvalu flag_tv
+🇹🇼	flag-tw taiwan flag_tw
+🇹🇿	flag-tz tanzania flag_tz
+🇺🇦	flag-ua ukraine flag_ua
+🇺🇬	flag-ug uganda flag_ug
+🇺🇲	flag-um flag_um us_outlying_islands
+🇺🇳	flag-un united_nations
+🇺🇾	flag-uy uruguay flag_uy
+🇺🇿	flag-uz uzbekistan flag_uz
+🇻🇦	flag-va vatican_city flag_va
+🇻🇨	flag-vc st_vincent_grenadines flag_vc
+🇻🇪	flag-ve venezuela flag_ve
+🇻🇬	flag-vg british_virgin_islands flag_vg
+🇻🇮	flag-vi us_virgin_islands flag_vi
+🇻🇳	flag-vn vietnam flag_vn
+🇻🇺	flag-vu vanuatu flag_vu
+🏴󠁧󠁢󠁷󠁬󠁳󠁿	flag-wales wales
+🇼🇫	flag-wf wallis_futuna flag_wf
+🇼🇸	flag-ws samoa flag_ws
+🇽🇰	flag-xk kosovo flag_xk
+🇾🇪	flag-ye yemen flag_ye
+🇾🇹	flag-yt mayotte flag_yt
+🇿🇦	flag-za south_africa flag_za
+🇿🇲	flag-zm zambia flag_zm
+🇿🇼	flag-zw zimbabwe flag_zw
+🎏	flags carp_streamer
+🦩	flamingo
+🔦	flashlight
+🥿	flat_shoe womans_flat_shoe
+🫓	flatbread
+⚜️	fleur_de_lis fleur-de-lis
+🛬	flight_arrival airplane_arrival airplane_arriving
+🛫	flight_departure airplane_departure
+💾	floppy_disk
+🎴	flower_playing_cards
+😳	flushed flushed_face
+🪈	flute
+🪰	fly
+🥏	flying_disc
+🛸	flying_saucer
+🌫️	fog
+🌁	foggy
+🪭	folding_hand_fan
+🫕	fondue
+🦶	foot
+🏈	football american_football
+👣	footprints
+🍴	fork_and_knife
+🥠	fortune_cookie
+⛲	fountain
+🖋️	fountain_pen pen_fountain lower_left_fountain_pen
+4️⃣	four keycap_4
+🕟	four-thirty clock430
+🍀	four_leaf_clover
+🦊	fox_face fox
+🇫🇷	fr flag_fr
+🖼️	framed_picture frame_photo frame_with_picture
+🆓	free
+🍳	fried_egg cooking
+🍤	fried_shrimp
+🍟	fries french_fries
+🐸	frog
+😦	frowning frowning_face_with_open_mouth
+🙍	frowning_person
+⛽	fuelpump fuel_pump
+🌕	full_moon
+🌝	full_moon_with_face full_moon_face
+⚱️	funeral_urn urn
+🎲	game_die
+🧄	garlic
+🇬🇧	gb uk flag_gb
+⚙️	gear
+💎	gem gem_stone
+♊	gemini
+👻	ghost
+🎁	gift wrapped_gift
+💝	gift_heart heart_with_ribbon
+🫚	ginger_root
+🦒	giraffe giraffe_face
+👧	girl
+🌐	globe_with_meridians
+🧤	gloves
+🥅	goal_net goal
+🐐	goat
+🥽	goggles
+⛳	golf flag_in_hole
+🏌️	golfing person_golfing
+🪿	goose
+🦍	gorilla
+🍇	grapes
+🍏	green_apple
+📗	green_book
+💚	green_heart
+🥗	green_salad salad
+🟩	green_square large_green_square
+❕	grey_exclamation white_exclamation_mark
+🩶	grey_heart
+❔	grey_question white_question_mark
+😬	grimacing grimacing_face
+😁	grin beaming_face_with_smiling_eyes
+😀	grinning grinning_face
+💂	guard
+🦮	guide_dog
+🎸	guitar
+🔫	gun water_pistol
+🪮	hair_pick
+🍔	hamburger
+🔨	hammer
+⚒️	hammer_and_pick hammer_pick
+🛠️	hammer_and_wrench tools
+🪬	hamsa
+🐹	hamster
+✋	hand raised_hand
+🫰	hand_with_index_finger_and_thumb_crossed
+👜	handbag
+🤾	handball handball_person person_playing_handball
+🤝	handshake
+💩	hankey poop shit pile_of_poo
+#️⃣	hash
+🐥	hatched_chick front-facing_baby_chick
+🐣	hatching_chick
+🙂‍↔️	head_shaking_horizontally
+🙂‍↕️	head_shaking_vertically
+🎧	headphones headphone
+🪦	headstone
+🧑‍⚕️	health_worker
+🙉	hear_no_evil hear-no-evil_monkey
+❤️	heart red_heart
+💟	heart_decoration
+😍	heart_eyes smiling_face_with_heart-eyes
+😻	heart_eyes_cat smiling_cat_with_heart-eyes
+🫶	heart_hands
+❤️‍🔥	heart_on_fire
+💓	heartbeat beating_heart
+💗	heartpulse growing_heart
+♥️	hearts heart_suit
+✔️	heavy_check_mark check_mark
+➗	heavy_division_sign divide
+💲	heavy_dollar_sign
+🟰	heavy_equals_sign
+❣️	heavy_heart_exclamation heart_exclamation heavy_heart_exclamation_mark_ornament
+➖	heavy_minus_sign minus
+✖️	heavy_multiplication_x multiply
+➕	heavy_plus_sign plus
+🦔	hedgehog
+🚁	helicopter
+🌿	herb
+🌺	hibiscus
+🔆	high_brightness bright_button
+👠	high_heel high-heeled_shoe
+🥾	hiking_boot
+🛕	hindu_temple
+🦛	hippopotamus
+🕳️	hole
+🍯	honey_pot
+🐝	honeybee bee
+🪝	hook
+🐴	horse horse_face
+🏇	horse_racing
+🏥	hospital
+🥵	hot_face hot
+🌶️	hot_pepper
+🌭	hotdog hot_dog
+🏨	hotel
+♨️	hotsprings hot_springs
+⌛	hourglass hourglass_done
+⏳	hourglass_flowing_sand hourglass_not_done
+🏠	house
+🏡	house_with_garden
+🏘️	houses homes house_buildings
+🤗	hugging_face hugs hugging smiling_face_with_open_hands
+😯	hushed hushed_face
+🛖	hut
+🪻	hyacinth
+🤟	i_love_you_hand_sign love_you love-you_gesture love_you_gesture
+🧊	ice ice_cube
+🍨	ice_cream
+🏒	ice_hockey hockey ice_hockey_stick_and_puck
+⛸️	ice_skate
+🍦	icecream soft_ice_cream
+🆔	id
+🪪	identification_card
+🉐	ideograph_advantage
+👿	imp angry_face_with_horns
+📥	inbox_tray
+📨	incoming_envelope
+🫵	index_pointing_at_the_viewer
+♾️	infinity
+ℹ️	information_source information
+😇	innocent smiling_face_with_halo
+⁉️	interrobang exclamation_question_mark
+📱	iphone mobile_phone
+🇮🇹	it flag_it
+🏮	izakaya_lantern lantern red_paper_lantern
+🎃	jack_o_lantern jack-o-lantern
+🗾	japan
+🏯	japanese_castle
+👺	japanese_goblin goblin
+👹	japanese_ogre ogre
+🫙	jar
+👖	jeans
+🪼	jellyfish
+🧩	jigsaw puzzle_piece
+😂	joy face_with_tears_of_joy
+😹	joy_cat cat_with_tears_of_joy
+🕹️	joystick
+🇯🇵	jp flag_jp
+🧑‍⚖️	judge
+🤹	juggling juggling_person person_juggling
+🕋	kaaba
+🦘	kangaroo
+🔑	key
+⌨️	keyboard
+🔟	keycap_ten keycap_10
+🪯	khanda
+🛴	kick_scooter scooter
+👘	kimono
+💋	kiss kiss_mark
+😗	kissing kissing_face
+😽	kissing_cat
+😚	kissing_closed_eyes kissing_face_with_closed_eyes
+😘	kissing_heart face_blowing_a_kiss
+😙	kissing_smiling_eyes kissing_face_with_smiling_eyes
+🪁	kite
+🥝	kiwi_fruit kiwi kiwifruit
+🧎‍♂️	kneeling_man man_kneeling
+🧎	kneeling_person person_kneeling
+🧎‍♀️	kneeling_woman woman_kneeling
+🔪	knife hocho kitchen_knife
+🍽️	knife_fork_plate plate_with_cutlery fork_knife_plate fork_and_knife_with_plate
+🪢	knot
+🐨	koala
+🈁	koko
+🇰🇷	kr flag_kr
+🥼	labcoat lab_coat
+🏷️	label
+🥍	lacrosse
+🪜	ladder
+🐞	ladybug lady_beetle
+🔵	large_blue_circle blue_circle
+🔷	large_blue_diamond
+🟢	large_green_circle green_circle
+🟠	large_orange_circle orange_circle
+🔶	large_orange_diamond
+🟣	large_purple_circle purple_circle
+🟡	large_yellow_circle yellow_circle
+🌗	last_quarter_moon
+🌜	last_quarter_moon_with_face last_quarter_moon_face
+✝️	latin_cross cross
+😆	laughing satisfied grinning_squinting_face
+🥬	leafy_greens leafy_green
+🍃	leaves leaf_fluttering_in_wind
+📒	ledger
+🤛	left-facing_fist fist_left left_facing_fist
+🛅	left_luggage
+↔️	left_right_arrow left-right_arrow
+🗨️	left_speech_bubble speech_left
+↩️	leftwards_arrow_with_hook right_arrow_curving_left
+🫲	leftwards_hand
+🫷	leftwards_pushing_hand
+🦵	leg
+🍋	lemon
+♌	leo
+🐆	leopard
+🎚️	level_slider
+♎	libra
+🩵	light_blue_heart
+🚈	light_rail
+🍋‍🟩	lime
+🔗	link
+🦁	lion_face lion
+👄	lips mouth
+💄	lipstick
+🦎	lizard
+🦙	llama
+🦞	lobster
+🔒	lock locked
+🔏	lock_with_ink_pen locked_with_pen
+🍭	lollipop
+🪘	long_drum
+➿	loop double_curly_loop
+🧴	lotion_bottle
+🪷	lotus
+🧘	lotus_position
+🔊	loud_sound speaker_high_volume
+📢	loudspeaker
+🏩	love_hotel
+💌	love_letter
+🪫	low_battery
+🔅	low_brightness dim_button
+🧳	luggage
+🫁	lungs
+🤥	lying_face
+Ⓜ️	m
+🔍	mag magnifying_glass_tilted_left
+🔎	mag_right magnifying_glass_tilted_right
+🪄	magic_wand
+🧲	magnet
+🀄	mahjong mahjong_red_dragon
+📫	mailbox closed_mailbox_with_raised_flag
+📪	mailbox_closed closed_mailbox_with_lowered_flag
+📬	mailbox_with_mail open_mailbox_with_raised_flag
+📭	mailbox_with_no_mail open_mailbox_with_lowered_flag
+👨‍🎨	male-artist man_artist
+👨‍🚀	male-astronaut man_astronaut
+👷‍♂️	male-construction-worker construction_worker_man construction_worker man_construction_worker
+👨‍🍳	male-cook man_cook
+🕵️‍♂️	male-detective male_detective man_detective sleuth_or_spy
+👨‍⚕️	male-doctor man_health_worker
+👨‍🏭	male-factory-worker man_factory_worker
+👨‍🌾	male-farmer man_farmer
+👨‍🚒	male-firefighter man_firefighter
+💂‍♂️	male-guard guardsman man_guard
+👨‍⚖️	male-judge man_judge
+👨‍🔧	male-mechanic man_mechanic
+👨‍💼	male-office-worker man_office_worker
+👨‍✈️	male-pilot man_pilot
+👮‍♂️	male-police-officer policeman cop man_police_officer
+👨‍🔬	male-scientist man_scientist
+👨‍🎤	male-singer man_singer
+👨‍🎓	male-student man_student
+👨‍🏫	male-teacher man_teacher
+👨‍💻	male-technologist man_technologist
+♂️	male_sign
+🦣	mammoth
+👨	man
+🚴‍♂️	man-biking biking_man bicyclist man_biking
+⛹️‍♂️	man-bouncing-ball basketball_man person_with_ball bouncing_ball_man man_bouncing_ball
+🙇‍♂️	man-bowing bowing_man man_bowing
+👨‍👦	man-boy family_man_boy
+👨‍👦‍👦	man-boy-boy family_man_boy_boy
+🤸‍♂️	man-cartwheeling man_cartwheeling
+🤦‍♂️	man-facepalming man_facepalming
+🙍‍♂️	man-frowning frowning_man man_frowning
+🙅‍♂️	man-gesturing-no no_good_man ng_man man_gesturing_no
+🙆‍♂️	man-gesturing-ok ok_man man_gesturing_ok
+💇‍♂️	man-getting-haircut haircut_man man_getting_haircut
+💆‍♂️	man-getting-massage massage_man man_getting_massage man_getting_face_massage
+👨‍👧	man-girl family_man_girl
+👨‍👧‍👦	man-girl-boy family_man_girl_boy
+👨‍👧‍👧	man-girl-girl family_man_girl_girl
+🏌️‍♂️	man-golfing golfing_man golfer man_golfing
+👨‍❤️‍👨	man-heart-man couple_with_heart_man_man couple_mm
+🤹‍♂️	man-juggling man_juggling
+👨‍❤️‍💋‍👨	man-kiss-man couplekiss_man_man kiss_mm kiss_man_man
+🏋️‍♂️	man-lifting-weights weight_lifting_man weight_lifter man_lifting_weights
+👨‍👨‍👦	man-man-boy family_man_man_boy family_mmb
+👨‍👨‍👦‍👦	man-man-boy-boy family_man_man_boy_boy family_mmbb
+👨‍👨‍👧	man-man-girl family_man_man_girl family_mmg
+👨‍👨‍👧‍👦	man-man-girl-boy family_man_man_girl_boy family_mmgb
+👨‍👨‍👧‍👧	man-man-girl-girl family_man_man_girl_girl family_mmgg
+🚵‍♂️	man-mountain-biking mountain_biking_man mountain_bicyclist man_mountain_biking
+🤾‍♂️	man-playing-handball man_playing_handball
+🤽‍♂️	man-playing-water-polo man_playing_water_polo
+🙎‍♂️	man-pouting pouting_man man_pouting
+🙋‍♂️	man-raising-hand raising_hand_man man_raising_hand
+🚣‍♂️	man-rowing-boat rowing_man rowboat man_rowing_boat
+🏃‍♂️	man-running running_man runner man_running
+🤷‍♂️	man-shrugging man_shrugging
+🏄‍♂️	man-surfing surfing_man surfer man_surfing
+🏊‍♂️	man-swimming swimming_man swimmer man_swimming
+💁‍♂️	man-tipping-hand tipping_hand_man sassy_man man_tipping_hand
+🚶‍♂️	man-walking walking_man walking man_walking
+👳‍♂️	man-wearing-turban man_with_turban man_wearing_turban
+👨‍👩‍👦	man-woman-boy family_man_woman_boy family
+👨‍👩‍👦‍👦	man-woman-boy-boy family_man_woman_boy_boy family_mwbb
+👨‍👩‍👧	man-woman-girl family_man_woman_girl family_mwg
+👨‍👩‍👧‍👦	man-woman-girl-boy family_man_woman_girl_boy family_mwgb
+👨‍👩‍👧‍👧	man-woman-girl-girl family_man_woman_girl_girl family_mwgg
+🤼‍♂️	man-wrestling men_wrestling
+🧔‍♂️	man_beard man_with_beard
+👨‍🦱	man_curly_hair curly_haired_man
+🕺	man_dancing
+🧝‍♂️	man_elf elf elf_man male_elf
+🧚‍♂️	man_fairy fairy_man male_fairy
+👨‍🍼	man_feeding_baby
+🧞‍♂️	man_genie genie genie_man male_genie
+🧘‍♂️	man_in_lotus_position lotus_position_man
+👨‍🦽	man_in_manual_wheelchair
+👨‍🦽‍➡️	man_in_manual_wheelchair_facing_right
+👨‍🦼	man_in_motorized_wheelchair
+👨‍🦼‍➡️	man_in_motorized_wheelchair_facing_right
+🧖‍♂️	man_in_steamy_room sauna_man person_in_steamy_room
+🤵‍♂️	man_in_tuxedo
+🧎‍♂️‍➡️	man_kneeling_facing_right
+👨‍🦰	man_red_hair red_haired_man
+🏃‍♂️‍➡️	man_running_facing_right
+🧍‍♂️	man_standing standing_man
+🦸‍♂️	man_superhero superhero_man male_superhero
+🦹‍♂️	man_supervillain supervillain_man male_supervillain
+🧛‍♂️	man_vampire vampire_man male_vampire
+🚶‍♂️‍➡️	man_walking_facing_right
+👨‍🦳	man_white_hair white_haired_man
+👲	man_with_gua_pi_mao man_with_chinese_cap person_with_skullcap
+👰‍♂️	man_with_veil
+👨‍🦯	man_with_white_cane man_with_probing_cane
+👨‍🦯‍➡️	man_with_white_cane_facing_right
+🧟‍♂️	man_zombie zombie zombie_man male_zombie
+🥭	mango
+👞	mans_shoe shoe
+🕰️	mantelpiece_clock clock
+🦽	manual_wheelchair
+🍁	maple_leaf
+🪇	maracas
+🥋	martial_arts_uniform
+😷	mask face_with_medical_mask
+🧉	mate mate_drink
+🍖	meat_on_bone
+🧑‍🔧	mechanic
+🦾	mechanical_arm
+🦿	mechanical_leg
+🎖️	medal_military medal military_medal
+🏅	medal_sports sports_medal
+⚕️	medical_symbol
+📣	mega megaphone
+🍈	melon
+🫠	melting_face
+📝	memo
+👯‍♂️	men-with-bunny-ears-partying dancing_men men_with_bunny_ears men_with_bunny_ears_partying
+❤️‍🩹	mending_heart
+🕎	menorah menorah_with_nine_branches
+🚹	mens
+🧜‍♀️	mermaid
+🧜‍♂️	merman merperson
+🚇	metro
+🦠	microbe
+🎤	microphone
+🔬	microscope
+🖕	middle_finger fu
+🪖	military_helmet
+🥛	milk_glass milk glass_of_milk
+🌌	milky_way
+🚐	minibus
+💽	minidisc computer_disk
+🪞	mirror
+🪩	mirror_ball
+📴	mobile_phone_off
+🤑	money_mouth_face money_mouth money-mouth_face
+💸	money_with_wings
+💰	moneybag money_bag
+🐒	monkey
+🐵	monkey_face
+🚝	monorail
+🥮	moon_cake
+🫎	moose
+🎓	mortar_board graduation_cap
+🕌	mosque
+🦟	mosquito
+🛥️	motor_boat motorboat
+🛵	motor_scooter
+🏍️	motorcycle racing_motorcycle
+🦼	motorized_wheelchair
+🛣️	motorway
+🗻	mount_fuji
+⛰️	mountain
+🚠	mountain_cableway
+🚞	mountain_railway
+🏔️	mountain_snow snow-capped_mountain snow_capped_mountain
+🐭	mouse mouse_face
+🐁	mouse2
+🪤	mouse_trap
+🎥	movie_camera
+🗿	moyai moai
+🤶	mrs_claus
+💪	muscle flexed_biceps
+🍄	mushroom
+🎹	musical_keyboard
+🎵	musical_note
+🎼	musical_score
+🔇	mute muted_speaker
+🧑‍🎄	mx_claus
+💅	nail_care nail_polish
+📛	name_badge
+🏞️	national_park park
+🤢	nauseated_face
+🧿	nazar_amulet
+👔	necktie
+❎	negative_squared_cross_mark cross_mark_button
+🤓	nerd_face nerd
+🪺	nest_with_eggs
+🪆	nesting_dolls
+😐	neutral_face
+🆕	new
+🌑	new_moon
+🌚	new_moon_with_face new_moon_face
+📰	newspaper
+🗞️	newspaper_roll newspaper2 rolled-up_newspaper rolled_up_newspaper
+⏭️	next_track_button track_next black_right_pointing_double_triangle_with_vertical_bar
+🆖	ng
+🌃	night_with_stars
+9️⃣	nine keycap_9
+🕤	nine-thirty clock930
+🥷	ninja
+🔕	no_bell bell_with_slash
+🚳	no_bicycles
+⛔	no_entry
+🚫	no_entry_sign prohibited
+📵	no_mobile_phones
+😶	no_mouth face_without_mouth
+🚷	no_pedestrians
+🚭	no_smoking
+🚱	non-potable_water
+👃	nose
+📓	notebook
+📔	notebook_with_decorative_cover
+🎶	notes musical_notes
+🔩	nut_and_bolt
+⭕	o hollow_red_circle
+🅾️	o2
+🌊	ocean water_wave
+🐙	octopus
+🍢	oden
+🏢	office office_building
+🧑‍💼	office_worker
+🛢️	oil_drum oil
+🆗	ok
+👌	ok_hand
+🙆	ok_person person_gesturing_ok
+🗝️	old_key key2
+🧓	older_adult older_person
+👴	older_man old_man
+👵	older_woman old_woman
+🫒	olive
+🕉️	om om_symbol
+🔛	on
+🚘	oncoming_automobile
+🚍	oncoming_bus
+🚔	oncoming_police_car
+🚖	oncoming_taxi
+1️⃣	one keycap_1
+🩱	one-piece_swimsuit one_piece_swimsuit
+🕜	one-thirty clock130
+🧅	onion
+📖	open_book book
+📂	open_file_folder
+👐	open_hands
+😮	open_mouth face_with_open_mouth
+⛎	ophiuchus
+📙	orange_book
+🧡	orange_heart
+🟧	orange_square large_orange_square
+🦧	orangutan
+☦️	orthodox_cross
+🦦	otter
+📤	outbox_tray
+🦉	owl
+🐂	ox
+🦪	oyster
+📦	package
+📄	page_facing_up
+📃	page_with_curl
+📟	pager
+🖌️	paintbrush lower_left_paintbrush
+🫳	palm_down_hand
+🌴	palm_tree
+🫴	palm_up_hand
+🤲	palms_up_together palms_up
+🥞	pancakes
+🐼	panda_face panda
+📎	paperclip
+🖇️	paperclips linked_paperclips
+🪂	parachute
+🅿️	parking
+🦜	parrot
+〽️	part_alternation_mark
+⛅	partly_sunny sun_behind_cloud
+🥳	partying_face partying
+🛳️	passenger_ship cruise_ship
+🛂	passport_control
+⏸️	pause_button double_vertical_bar
+🐾	paw_prints feet
+🫛	pea_pod
+☮️	peace_symbol peace
+🍑	peach
+🦚	peacock
+🥜	peanuts
+🍐	pear
+🖊️	pen pen_ballpoint lower_left_ballpoint_pen
+✏️	pencil2 pencil
+🐧	penguin
+😔	pensive pensive_face
+🧑‍🤝‍🧑	people_holding_hands
+🫂	people_hugging
+👯	people_with_bunny_ears people_with_bunny_ears_partying
+🎭	performing_arts
+😣	persevere persevering_face
+🚴	person_biking
+🧑‍🦱	person_curly_hair curly_haired_person
+🧑‍🍼	person_feeding_baby
+🤺	person_fencing fencer
+🙅	person_gesturing_no
+💇	person_getting_haircut
+💆	person_getting_massage
+🧑‍🦽	person_in_manual_wheelchair
+🧑‍🦽‍➡️	person_in_manual_wheelchair_facing_right
+🧑‍🦼	person_in_motorized_wheelchair
+🧑‍🦼‍➡️	person_in_motorized_wheelchair_facing_right
+🤵	person_in_tuxedo
+🧎‍➡️	person_kneeling_facing_right
+🚵	person_mountain_biking
+🙋	person_raising_hand
+🧑‍🦰	person_red_hair red_haired_person
+🚣	person_rowing_boat
+🏃‍➡️	person_running_facing_right
+🧍	person_standing standing_person
+🏄	person_surfing
+🏊	person_swimming
+💁	person_tipping_hand tipping_hand_person
+🚶	person_walking
+🚶‍➡️	person_walking_facing_right
+🧑‍🦳	person_white_hair white_haired_person
+🫅	person_with_crown
+👳	person_with_turban person_wearing_turban
+🧑‍🦯	person_with_white_cane person_with_probing_cane
+🧑‍🦯‍➡️	person_with_white_cane_facing_right
+🧫	petri_dish
+🐦‍🔥	phoenix
+☎️	phone telephone
+⛏️	pick
+🛻	pickup_truck
+🥧	pie
+🐷	pig pig_face
+🐖	pig2
+🐽	pig_nose
+💊	pill
+🧑‍✈️	pilot
+🪅	pinata
+🤌	pinched_fingers
+🤏	pinching_hand
+🍍	pineapple
+🏓	ping_pong table_tennis_paddle_and_ball
+🩷	pink_heart
+🏴‍☠️	pirate_flag
+♓	pisces
+🍕	pizza
+🪧	placard
+🛐	place_of_worship
+⏯️	play_or_pause_button play_pause black_right_pointing_triangle_with_double_vertical_bar
+🛝	playground_slide
+🥺	pleading_face pleading
+🪠	plunger
+👇	point_down backhand_index_pointing_down
+👈	point_left backhand_index_pointing_left
+👉	point_right backhand_index_pointing_right
+☝️	point_up index_pointing_up
+👆	point_up_2 backhand_index_pointing_up
+🐻‍❄️	polar_bear
+🚓	police_car
+👮	police_officer
+🐩	poodle
+🍿	popcorn
+🏣	post_office
+📯	postal_horn
+📮	postbox
+🚰	potable_water
+🥔	potato
+🪴	potted_plant
+👝	pouch clutch_bag
+🍗	poultry_leg
+💷	pound pound_banknote
+🫗	pouring_liquid
+😾	pouting_cat
+🙎	pouting_face person_pouting
+🙏	pray folded_hands
+📿	prayer_beads
+🫃	pregnant_man
+🫄	pregnant_person
+🤰	pregnant_woman
+🥨	pretzel
+⏮️	previous_track_button track_previous last_track_button black_left_pointing_double_triangle_with_vertical_bar
+🤴	prince
+👸	princess
+🖨️	printer
+💜	purple_heart
+🟪	purple_square large_purple_square
+👛	purse
+📌	pushpin
+🚮	put_litter_in_its_place litter_in_bin_sign
+❓	question red_question_mark
+🐰	rabbit rabbit_face
+🐇	rabbit2
+🦝	raccoon
+🐎	racehorse
+🏎️	racing_car race_car
+📻	radio
+🔘	radio_button
+☢️	radioactive radioactive_sign
+😡	rage pout enraged_face
+🚃	railway_car
+🛤️	railway_track
+🌈	rainbow
+🏳️‍🌈	rainbow-flag rainbow_flag
+🤚	raised_back_of_hand
+🖐️	raised_hand_with_fingers_splayed hand_with_fingers_splayed
+🙌	raised_hands raising_hands
+🐏	ram
+🍜	ramen steaming_bowl
+🐀	rat
+🪒	razor
+🧾	receipt
+⏺️	record_button black_circle_for_record
+♻️	recycle recycling_symbol
+🚗	red_car car automobile
+🔴	red_circle
+🧧	red_envelope
+🦰	red_hair
+🟥	red_square large_red_square
+®️	registered
+☺️	relaxed smiling_face
+😌	relieved relieved_face
+🎗️	reminder_ribbon
+🔁	repeat repeat_button
+🔂	repeat_one repeat_single_button
+⛑️	rescue_worker_helmet helmet_with_cross helmet_with_white_cross
+🚻	restroom
+💞	revolving_hearts
+⏪	rewind fast_reverse_button
+🦏	rhinoceros rhino
+🎀	ribbon
+🍚	rice cooked_rice
+🍙	rice_ball
+🍘	rice_cracker
+🎑	rice_scene moon_viewing_ceremony
+🤜	right-facing_fist fist_right right_facing_fist
+🗯️	right_anger_bubble anger_right
+🫱	rightwards_hand
+🫸	rightwards_pushing_hand
+💍	ring
+🛟	ring_buoy
+🪐	ringed_planet
+🤖	robot_face robot
+🪨	rock
+🚀	rocket
+🎢	roller_coaster
+🛼	roller_skate
+🤣	rolling_on_the_floor_laughing rofl
+🐓	rooster
+🌹	rose
+🏵️	rosette
+🚨	rotating_light police_car_light
+📍	round_pushpin
+🇷🇺	ru flag_ru
+🏉	rugby_football
+🏃	running person_running
+🎽	running_shirt_with_sash running_shirt
+🈂️	sa
+🧷	safety_pin
+🦺	safety_vest
+♐	sagittarius
+⛵	sailboat boat
+🍶	sake
+🧂	salt
+🫡	saluting_face
+👡	sandal
+🥪	sandwich
+🎅	santa
+🥻	sari
+🛰️	satellite artificial_satellite satellite_orbital
+📡	satellite_antenna
+🧖	sauna_person
+🦕	sauropod
+🎷	saxophone
+🧣	scarf
+🏫	school
+🎒	school_satchel backpack
+🧑‍🔬	scientist
+✂️	scissors
+🦂	scorpion
+♏	scorpius
+😱	scream face_screaming_in_fear
+🙀	scream_cat weary_cat
+🪛	screwdriver
+📜	scroll
+🦭	seal
+💺	seat
+㊙️	secret
+🙈	see_no_evil see-no-evil_monkey
+🌱	seedling
+🤳	selfie
+🐕‍🦺	service_dog
+7️⃣	seven keycap_7
+🕢	seven-thirty clock730
+🪡	sewing_needle
+🫨	shaking_face
+🥘	shallow_pan_of_food
+☘️	shamrock
+🦈	shark
+🍧	shaved_ice
+🐑	sheep ewe
+🐚	shell spiral_shell
+🛡️	shield
+⛩️	shinto_shrine
+🚢	ship
+👕	shirt tshirt t-shirt
+🛍️	shopping shopping_bags
+🛒	shopping_cart shopping_trolley
+🩳	shorts
+🚿	shower
+🦐	shrimp
+🤷	shrug person_shrugging
+🤫	shushing_face shushing
+📶	signal_strength antenna_bars
+🧑‍🎤	singer
+6️⃣	six keycap_6
+🕡	six-thirty clock630
+🔯	six_pointed_star dotted_six-pointed_star
+🛹	skateboard
+🎿	ski skis
+⛷️	skier
+🏻	skin-tone-2
+🏼	skin-tone-3
+🏽	skin-tone-4
+🏾	skin-tone-5
+🏿	skin-tone-6
+💀	skull
+☠️	skull_and_crossbones skull_crossbones
+🦨	skunk
+🛷	sled
+😴	sleeping sleeping_face
+🛌	sleeping_bed person_in_bed sleeping_accommodation
+😪	sleepy sleepy_face
+🙁	slightly_frowning_face slight_frown
+🙂	slightly_smiling_face slight_smile
+🎰	slot_machine
+🦥	sloth
+🛩️	small_airplane airplane_small
+🔹	small_blue_diamond
+🔸	small_orange_diamond
+🔺	small_red_triangle red_triangle_pointed_up
+🔻	small_red_triangle_down red_triangle_pointed_down
+😄	smile grinning_face_with_smiling_eyes
+😸	smile_cat grinning_cat_with_smiling_eyes
+😃	smiley grinning_face_with_big_eyes
+😺	smiley_cat grinning_cat
+🥰	smiling_face_with_3_hearts smiling_face_with_three_hearts smiling_face_with_hearts
+🥲	smiling_face_with_tear
+😈	smiling_imp smiling_face_with_horns
+😏	smirk smirking_face
+😼	smirk_cat cat_with_wry_smile
+🚬	smoking cigarette
+🐌	snail
+🐍	snake
+🤧	sneezing_face
+🏂	snowboarder
+❄️	snowflake
+☃️	snowman snowman_with_snow snowman2
+⛄	snowman_without_snow
+🧼	soap
+😭	sob loudly_crying_face
+⚽	soccer soccer_ball
+🧦	socks
+🥎	softball
+🔜	soon
+🧙‍♀️	sorceress mage mage_woman woman_mage female_mage
+🆘	sos
+🔉	sound speaker_medium_volume
+👾	space_invader alien_monster
+♠️	spades spade_suit
+🍝	spaghetti
+❇️	sparkle
+🎇	sparkler
+✨	sparkles
+💖	sparkling_heart
+🙊	speak_no_evil speak-no-evil_monkey
+🔈	speaker speaker_low_volume
+🗣️	speaking_head speaking_head_in_silhouette
+💬	speech_balloon
+🚤	speedboat
+🕷️	spider
+🕸️	spider_web
+🗓️	spiral_calendar calendar_spiral spiral_calendar_pad
+🗒️	spiral_notepad notepad_spiral spiral_note_pad
+🖖	spock-hand vulcan_salute vulcan
+🧽	sponge
+🥄	spoon
+🦑	squid
+🏟️	stadium
+🧍‍♀️	standing_woman woman_standing
+⭐	star
+🤩	star-struck star_struck
+🌟	star2 glowing_star
+☪️	star_and_crescent
+✡️	star_of_david
+🌠	stars shooting_star
+🚉	station
+🗽	statue_of_liberty
+🥩	steak cut_of_meat
+🚂	steam_locomotive locomotive
+🩺	stethoscope
+🍲	stew pot_of_food
+⏹️	stop_button black_square_for_stop
+🛑	stop_sign octagonal_sign
+⏱️	stopwatch
+📏	straight_ruler
+🍓	strawberry
+😛	stuck_out_tongue face_with_tongue
+😝	stuck_out_tongue_closed_eyes squinting_face_with_tongue
+😜	stuck_out_tongue_winking_eye winking_face_with_tongue
+🧑‍🎓	student
+🎙️	studio_microphone microphone2
+🥙	stuffed_flatbread
+🌥️	sun_behind_large_cloud barely_sunny white_sun_cloud
+🌦️	sun_behind_rain_cloud partly_sunny_rain white_sun_rain_cloud
+🌤️	sun_behind_small_cloud mostly_sunny white_sun_small_cloud
+🌞	sun_with_face
+🌻	sunflower
+😎	sunglasses smiling_face_with_sunglasses
+☀️	sunny sun
+🌅	sunrise
+🌄	sunrise_over_mountains
+🦸	superhero
+🦹	supervillain
+🍣	sushi
+🚟	suspension_railway
+🦢	swan
+😓	sweat downcast_face_with_sweat
+💦	sweat_drops sweat_droplets
+😅	sweat_smile grinning_face_with_sweat
+🍠	sweet_potato roasted_sweet_potato
+🔣	symbols input_symbols
+🕍	synagogue
+💉	syringe
+🦖	t-rex t_rex
+🌮	taco
+🎉	tada party_popper
+🥡	takeout_box
+🫔	tamale
+🎋	tanabata_tree
+🍊	tangerine orange mandarin
+♉	taurus
+🚕	taxi
+🍵	tea teacup_without_handle
+🧑‍🏫	teacher
+🫖	teapot
+🧑‍💻	technologist
+🧸	teddy_bear
+📞	telephone_receiver
+🔭	telescope
+🕥	ten-thirty clock1030
+🎾	tennis
+⛺	tent
+🧪	test_tube
+🤘	the_horns metal sign_of_the_horns
+🌡️	thermometer
+🤔	thinking_face thinking
+🩴	thong_sandal
+💭	thought_balloon
+🧵	thread
+3️⃣	three keycap_3
+🕞	three-thirty clock330
+🎫	ticket
+🎟️	tickets admission_tickets
+🐯	tiger tiger_face
+🐅	tiger2
+⏲️	timer_clock timer
+😫	tired_face
+™️	tm trade_mark
+🚽	toilet
+🧻	toilet_paper roll_of_paper
+🗼	tokyo_tower
+🍅	tomato
+👅	tongue
+🧰	toolbox
+🦷	tooth
+🪥	toothbrush
+🔝	top
+🎩	tophat top_hat
+🌪️	tornado cloud_tornado
+🖲️	trackball
+🚜	tractor
+🚥	traffic_light horizontal_traffic_light
+🚋	train tram_car
+🚆	train2
+🚊	tram
+🏳️‍⚧️	transgender_flag
+⚧️	transgender_symbol
+🚩	triangular_flag_on_post triangular_flag
+📐	triangular_ruler
+🔱	trident trident_emblem
+😤	triumph face_with_steam_from_nose
+🧌	troll
+🚎	trolleybus
+🏆	trophy
+🍹	tropical_drink
+🐠	tropical_fish
+🚚	truck delivery_truck
+🎺	trumpet
+🌷	tulip
+🥃	tumbler_glass
+🦃	turkey
+🐢	turtle
+📺	tv television
+🕧	twelve-thirty clock1230
+🔀	twisted_rightwards_arrows shuffle_tracks_button
+2️⃣	two keycap_2
+🕝	two-thirty clock230
+💕	two_hearts
+👬	two_men_holding_hands men_holding_hands
+👭	two_women_holding_hands women_holding_hands
+🈹	u5272
+🈴	u5408
+🈺	u55b6
+🈯	u6307
+🈷️	u6708
+🈶	u6709
+🈵	u6e80
+🈚	u7121
+🈸	u7533
+🈲	u7981
+🈳	u7a7a
+☂️	umbrella open_umbrella umbrella2
+☔	umbrella_with_rain_drops
+😒	unamused unamused_face
+🔞	underage no_one_under_eighteen
+🦄	unicorn_face unicorn
+🔓	unlock unlocked
+🆙	up
+🙃	upside_down_face upside_down upside-down_face
+🇺🇸	us flag_us
+✌️	v victory_hand
+🚦	vertical_traffic_light
+📼	vhs videocassette
+📳	vibration_mode
+📹	video_camera
+🎮	video_game
+🎻	violin
+♍	virgo
+🌋	volcano
+🏐	volleyball
+🆚	vs
+🧇	waffle
+🌘	waning_crescent_moon
+🌖	waning_gibbous_moon
+⚠️	warning
+🗑️	wastebasket
+⌚	watch
+🐃	water_buffalo
+🤽	water_polo person_playing_water_polo
+🍉	watermelon
+👋	wave waving_hand
+〰️	wavy_dash
+🌒	waxing_crescent_moon
+🌔	waxing_gibbous_moon moon
+🚾	wc water_closet
+😩	weary weary_face
+💒	wedding
+🏋️	weight_lifting person_lifting_weights
+🐳	whale spouting_whale
+🐋	whale2
+🛞	wheel
+☸️	wheel_of_dharma
+♿	wheelchair wheelchair_symbol
+🦯	white_cane probing_cane
+✅	white_check_mark check_mark_button
+⚪	white_circle
+🏳️	white_flag flag_white waving_white_flag
+💮	white_flower
+☹️	white_frowning_face frowning_face frowning2
+🦳	white_hair
+🤍	white_heart
+⬜	white_large_square
+◽	white_medium_small_square white_medium-small_square
+◻️	white_medium_square
+▫️	white_small_square
+🔳	white_square_button
+🥀	wilted_flower wilted_rose
+🎐	wind_chime
+🌬️	wind_face wind_blowing_face
+🪟	window
+🍷	wine_glass
+🪽	wing
+😉	wink winking_face
+🛜	wireless
+🧙‍♂️	wizard mage_man man_mage male_mage
+🐺	wolf
+👩	woman
+🚴‍♀️	woman-biking biking_woman woman_biking
+⛹️‍♀️	woman-bouncing-ball basketball_woman bouncing_ball_woman woman_bouncing_ball
+🙇‍♀️	woman-bowing bowing_woman woman_bowing
+👩‍👦	woman-boy family_woman_boy
+👩‍👦‍👦	woman-boy-boy family_woman_boy_boy
+🤸‍♀️	woman-cartwheeling woman_cartwheeling
+🤦‍♀️	woman-facepalming woman_facepalming
+🙍‍♀️	woman-frowning frowning_woman woman_frowning person_frowning
+🙅‍♀️	woman-gesturing-no no_good_woman no_good ng_woman woman_gesturing_no
+🙆‍♀️	woman-gesturing-ok ok_woman woman_gesturing_ok
+💇‍♀️	woman-getting-haircut haircut_woman haircut woman_getting_haircut
+💆‍♀️	woman-getting-massage massage_woman massage woman_getting_massage woman_getting_face_massage
+👩‍👧	woman-girl family_woman_girl
+👩‍👧‍👦	woman-girl-boy family_woman_girl_boy
+👩‍👧‍👧	woman-girl-girl family_woman_girl_girl
+🏌️‍♀️	woman-golfing golfing_woman woman_golfing
+👩‍❤️‍👨	woman-heart-man couple_with_heart_woman_man
+👩‍❤️‍👩	woman-heart-woman couple_with_heart_woman_woman couple_ww
+🤹‍♀️	woman-juggling woman_juggling
+👩‍❤️‍💋‍👨	woman-kiss-man couplekiss_man_woman kiss_woman_man
+👩‍❤️‍💋‍👩	woman-kiss-woman couplekiss_woman_woman kiss_ww kiss_woman_woman
+🏋️‍♀️	woman-lifting-weights weight_lifting_woman woman_lifting_weights
+🚵‍♀️	woman-mountain-biking mountain_biking_woman woman_mountain_biking
+🤾‍♀️	woman-playing-handball woman_playing_handball
+🤽‍♀️	woman-playing-water-polo woman_playing_water_polo
+🙎‍♀️	woman-pouting pouting_woman woman_pouting person_with_pouting_face
+🙋‍♀️	woman-raising-hand raising_hand_woman raising_hand woman_raising_hand
+🚣‍♀️	woman-rowing-boat rowing_woman woman_rowing_boat
+🏃‍♀️	woman-running running_woman woman_running
+🤷‍♀️	woman-shrugging woman_shrugging
+🏄‍♀️	woman-surfing surfing_woman woman_surfing
+🏊‍♀️	woman-swimming swimming_woman woman_swimming
+💁‍♀️	woman-tipping-hand tipping_hand_woman sassy_woman woman_tipping_hand information_desk_person
+🚶‍♀️	woman-walking walking_woman woman_walking
+👳‍♀️	woman-wearing-turban woman_with_turban woman_wearing_turban
+👩‍👩‍👦	woman-woman-boy family_woman_woman_boy family_wwb
+👩‍👩‍👦‍👦	woman-woman-boy-boy family_woman_woman_boy_boy family_wwbb
+👩‍👩‍👧	woman-woman-girl family_woman_woman_girl family_wwg
+👩‍👩‍👧‍👦	woman-woman-girl-boy family_woman_woman_girl_boy family_wwgb
+👩‍👩‍👧‍👧	woman-woman-girl-girl family_woman_woman_girl_girl family_wwgg
+🤼‍♀️	woman-wrestling women_wrestling
+🧔‍♀️	woman_beard woman_with_beard
+👩‍🦱	woman_curly_hair curly_haired_woman
+🧝‍♀️	woman_elf elf_woman female_elf
+🧚‍♀️	woman_fairy fairy fairy_woman female_fairy
+👩‍🍼	woman_feeding_baby
+🧞‍♀️	woman_genie genie_woman female_genie
+🧘‍♀️	woman_in_lotus_position lotus_position_woman person_in_lotus_position
+👩‍🦽	woman_in_manual_wheelchair
+👩‍🦽‍➡️	woman_in_manual_wheelchair_facing_right
+👩‍🦼	woman_in_motorized_wheelchair
+👩‍🦼‍➡️	woman_in_motorized_wheelchair_facing_right
+🧖‍♀️	woman_in_steamy_room sauna_woman
+🤵‍♀️	woman_in_tuxedo
+🧎‍♀️‍➡️	woman_kneeling_facing_right
+👩‍🦰	woman_red_hair red_haired_woman
+🏃‍♀️‍➡️	woman_running_facing_right
+🦸‍♀️	woman_superhero superhero_woman female_superhero
+🦹‍♀️	woman_supervillain supervillain_woman female_supervillain
+🧛‍♀️	woman_vampire vampire vampire_woman female_vampire
+🚶‍♀️‍➡️	woman_walking_facing_right
+👩‍🦳	woman_white_hair white_haired_woman
+🧕	woman_with_headscarf person_with_headscarf
+👰‍♀️	woman_with_veil
+👩‍🦯	woman_with_white_cane woman_with_probing_cane
+👩‍🦯‍➡️	woman_with_white_cane_facing_right
+🧟‍♀️	woman_zombie zombie_woman female_zombie
+👚	womans_clothes
+👒	womans_hat
+👯‍♀️	women-with-bunny-ears-partying dancing_women dancers women_with_bunny_ears women_with_bunny_ears_partying
+🚺	womens
+🪵	wood
+🥴	woozy_face woozy
+🗺️	world_map map
+🪱	worm
+😟	worried worried_face
+🔧	wrench
+🤼	wrestlers wrestling people_wrestling
+✍️	writing_hand
+❌	x cross_mark
+🩻	x-ray x_ray
+🧶	yarn
+🥱	yawning_face
+💛	yellow_heart
+🟨	yellow_square large_yellow_square
+💴	yen yen_banknote
+☯️	yin_yang
+🪀	yo-yo yo_yo
+😋	yum face_savoring_food
+🤪	zany_face zany crazy_face
+⚡	zap high_voltage
+🦓	zebra zebra_face
+0️⃣	zero keycap_0
+🤐	zipper_mouth_face zipper_mouth zipper-mouth_face
+💤	zzz

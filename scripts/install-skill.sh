@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Manual skill installation script.
-# Prefer: npx skills add stablyai/agent-slack
-# See: https://skills.sh
+# Copies the agent skill(s) shipped in skills/ into the per-user skill
+# directories of the common coding agents. Skill names are taken from the
+# directory names, so this script does not need to know the tool's name.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="${ROOT}/skills/agent-slack"
-
-if [[ ! -d "${SRC}" ]]; then
-  echo "Skill source not found: ${SRC}" >&2
-  exit 1
-fi
 
 install_one() {
-  local dest_root="$1"
-  local dest="${dest_root}/agent-slack"
+  local src="$1" dest_root="$2"
+  local dest
+  dest="${dest_root}/$(basename "${src}")"
 
   mkdir -p "${dest_root}"
-
   if command -v rsync >/dev/null 2>&1; then
     mkdir -p "${dest}"
-    rsync -a --delete "${SRC}/" "${dest}/"
+    rsync -a --delete "${src}/" "${dest}/"
   else
     rm -rf "${dest}"
-    cp -R "${SRC}" "${dest}"
+    cp -R "${src}" "${dest}"
   fi
-
   echo "Installed skill to: ${dest}"
 }
 
-install_one "${HOME}/.agents/skills"   # Codex, Gemini CLI, OpenCode
-install_one "${HOME}/.claude/skills"   # Claude Code
+found=0
+for skill in "${ROOT}"/skills/*/; do
+  skill="${skill%/}"
+  [[ -f "${skill}/SKILL.md" ]] || continue
+  found=1
+  install_one "${skill}" "${HOME}/.agents/skills" # Codex, Gemini CLI, OpenCode
+  install_one "${skill}" "${HOME}/.claude/skills" # Claude Code
+done
 
-echo ""
-echo "Tip: For more agents, use: npx skills add stablyai/agent-slack"
-
+if [[ "${found}" -eq 0 ]]; then
+  echo "No skill found under ${ROOT}/skills" >&2
+  exit 1
+fi

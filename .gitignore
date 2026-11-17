@@ -1,21 +1,23 @@
 .DS_Store
-node_modules
 .env
 .env.*
 
-# bun
-bun.lockb
+# go build outputs (make build, go build ./cmd/...) and goreleaser
+/build/
+/dist/
+*.exe
+*.test
+*.out
+coverage.*
 
-# build
-dist
-release
-*.bun-build
+# go workspace files are per-developer
+go.work
+go.work.sum
 
-# local
+# local scratch
 .cache
 .tmp
 .tmp-downloads
-tmp_pyenv
 
 # claude code agent worktrees + local session state
 .claude/
@@ -24,15 +26,6 @@ tmp_pyenv
 feat-*
 fix-*
 chore-*
-
-# npm postinstall
-bin/native/
-
-# npm artifacts/logs
-*.tgz
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 
 # design docs
 design-docs/
