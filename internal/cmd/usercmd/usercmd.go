@@ -17,8 +17,10 @@ const maxListLimit = 1000
 
 const userArgHelp = `A user is given as a user ID (U…/W…, no lookup needed), an email address,
 a @handle (the "@" is optional), or the exact display name or real name of
-a single member. Handles and names are looked up by scanning the user
-directory, which is slow in large workspaces: prefer IDs or emails.`
+a single member. A handle is found with one message search when that member
+posted in a conversation you can see (not with a bot token). Otherwise, and
+for names, the whole user directory is scanned, which is slow in large
+workspaces and fails (rate limited) in huge ones: prefer IDs or emails.`
 
 // New returns the "user" command.
 func New(rt *clictx.Context) *cobra.Command {
@@ -121,7 +123,10 @@ channel ID. An existing conversation is reused; nothing is posted.
 ` + userArgHelp + `
 
 Prints {"user_ids": […], "dm_channel_id": "D…"|"G…", "channel_type":
-"dm"|"group_dm"}. Use dm_channel_id as the target of other commands.`,
+"dm"|"group_dm", "already_open": true|false}. Use dm_channel_id as the
+target of other commands. already_open is what Slack reports: true when
+the conversation was already open for you, false when this call opened it
+(a new conversation, or an existing one that was closed).`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()

@@ -9,6 +9,7 @@ import (
 
 	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/channeladmin"
 	"github.com/maelvls/slackcli/internal/slack/channels"
 	"github.com/maelvls/slackcli/internal/slack/users"
@@ -60,8 +61,8 @@ returns one page; next_cursor is present when there are more: pass it to
 			case viaCounts && user != "":
 				return errors.New("--via-counts cannot be used with --user")
 			}
-			if limit < 1 || limit > maxListLimit {
-				return fmt.Errorf("invalid --limit value %d: must be between 1 and %d (use --cursor with next_cursor to get more)", limit, maxListLimit)
+			if err := cmdutil.CheckLimit(limit, maxListLimit, "use --cursor with next_cursor to get more"); err != nil {
+				return err
 			}
 			ctx := cmd.Context()
 			ws := rt.EffectiveWorkspace(workspace)

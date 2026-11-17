@@ -5,15 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/appinfo"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/jsonx"
-	"github.com/maelvls/slackcli/internal/slack/messages"
 	"github.com/maelvls/slackcli/internal/slack/scheduled"
 	"github.com/maelvls/slackcli/internal/slack/slacktext"
 	"github.com/maelvls/slackcli/internal/slack/slackurl"
@@ -70,18 +69,8 @@ In safe mode (--safe-mode or %[1]s=1) nothing is posted: the compose editor
 opens with the text for a human to review and send. --attach, --blocks,
 --schedule, --schedule-in and --reply-broadcast are refused in safe mode, and
 so is running in CI, where no editor can open.`, appinfo.EnvName("SAFE_MODE")),
-		// Flags are parsed by parseArgsWithDashText, so that [text] may
-		// start with "- ".
-		DisableFlagParsing: true,
-		Args:               cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, raw []string) error {
-			args, ok, err := parseArgsWithDashText(cmd, raw)
-			if !ok {
-				return err
-			}
-			if err := cobra.RangeArgs(1, 2)(cmd, args); err != nil {
-				return err
-			}
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
 			text := ""
 			if len(args) == 2 {
 				text = args[1]
@@ -89,8 +78,8 @@ so is running in CI, where no editor can open.`, appinfo.EnvName("SAFE_MODE")),
 			return c.runSend(cmd, args[0], text, opts)
 		},
 	}
+	cmdutil.AddTargetWorkspaceFlag(cmd, &opts.workspace)
 	f := cmd.Flags()
-	f.StringVar(&opts.workspace, "workspace", "", workspaceUsage)
 	f.StringVar(&opts.threadTS, "thread-ts", "", "Thread root ts to reply to, for channel targets and user-ID targets; refused with a message URL target, which already says which thread to reply in")
 	f.BoolVar(&opts.replyBroadcast, "reply-broadcast", false, "Also show this thread reply in the channel (requires --thread-ts for channel targets; a message URL target supplies the thread; not supported for user-ID/DM targets; cannot be combined with --attach)")
 	f.StringArrayVar(&opts.attach, "attach", nil, "Attach a local file (repeatable; all files go in one message); [text] becomes the files' comment, sent as plain mrkdwn without automatic list conversion. Cannot be combined with --blocks, --schedule, --schedule-in, --reply-broadcast or --no-unfurl")
@@ -98,30 +87,15 @@ so is running in CI, where no editor can open.`, appinfo.EnvName("SAFE_MODE")),
 	f.StringVar(&opts.schedule, "schedule", "", "Send later, at "+scheduled.AtHelp+"; within 120 days. Cannot be combined with --schedule-in or --attach")
 	f.StringVar(&opts.scheduleIn, "schedule-in", "", "Send later, after "+scheduled.InHelp+" of this process; within 120 days. Cannot be combined with --schedule or --attach")
 	f.BoolVar(&opts.noUnfurl, "no-unfurl", false, "Suppress link and media previews. Cannot be combined with --attach")
-	return cmd
-}
-
-// normalizeAttachPaths trims and de-duplicates --attach values, keeping
-// their order.
-func normalizeAttachPaths(raw []string) []string {
-	var out []string
-	for _, p := range raw {
-		if p = strings.TrimSpace(p); p != "" && !slices.Contains(out, p) {
-			out = append(out, p)
-		}
-	}
-	return out
+	// [text] may start with "- ".
+	return cmdutil.AllowDashText(cmd)
 }
 
 func (c *command) runSend(cmd *cobra.Command, targetInput, text string, opts sendOptions) error {
 	ctx := cmd.Context()
 	changed := cmd.Flags().Changed
 
-	target, err := slackurl.ParseTarget(targetInput)
-	if err != nil {
-		return err
-	}
-	attach := normalizeAttachPaths(opts.attach)
+	attach := cmdutil.AttachPaths(opts.attach)
 	hasAttach, hasBlocks := len(attach) > 0, changed("blocks")
 	hasSchedule, hasScheduleIn := changed("schedule"), changed("schedule-in")
 
@@ -139,12 +113,13 @@ func (c *command) runSend(cmd *cobra.Command, targetInput, text string, opts sen
 	case strings.TrimSpace(text) == "" && !hasAttach && !hasBlocks:
 		return errors.New("<text> is required when no --attach files or --blocks are provided")
 	}
-	threadTS, err := parseTS("--thread-ts", opts.threadTS)
+	threadTS, err := cmdutil.ParseTS("--thread-ts", opts.threadTS)
 	if err != nil {
 		return err
 	}
 
 	if c.rt.SafeMode() {
+		// The editor resolves the target itself.
 		payload, err := c.redirectSendToCompose(ctx, targetInput, text, opts, redirectFlags{
 			attach: hasAttach, blocks: hasBlocks, schedule: hasSchedule, scheduleIn: hasScheduleIn,
 		})
@@ -152,6 +127,11 @@ func (c *command) runSend(cmd *cobra.Command, targetInput, text string, opts sen
 			return err
 		}
 		return c.rt.Print(payload)
+	}
+
+	target, err := cmdutil.ParseTarget(c.rt, targetInput, opts.workspace)
+	if err != nil {
+		return err
 	}
 
 	switch {
@@ -207,18 +187,15 @@ func (c *command) runSend(cmd *cobra.Command, targetInput, text string, opts sen
 		msg.blocks = slacktext.TextToRichTextBlocks(text)
 	}
 
-	result, err := withTarget(ctx, c, target, opts.workspace, func(loc located) (sendResult, error) {
+	result, err := cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (sendResult, error) {
 		msg := msg
 		if target.Kind == slackurl.TargetURL {
 			// Reply in the thread the linked message belongs to (or start
 			// one under it).
-			ref := target.Ref
-			ref.WorkspaceURL = loc.WorkspaceURL
-			linked, err := messages.FetchMessage(ctx, loc.Client, ref, false)
-			if err != nil {
+			var err error
+			if msg.threadTS, err = target.ReplyThreadTS(ctx, loc.Client); err != nil {
 				return sendResult{}, err
 			}
-			msg.threadTS = cmp.Or(linked.ThreadTS, linked.TS)
 		}
 		return c.sendToChannel(ctx, loc, msg)
 	})
@@ -261,18 +238,18 @@ func (m outgoing) chatParams(channelID string) map[string]any {
 	return params
 }
 
-func (c *command) sendToChannel(ctx context.Context, loc located, m outgoing) (sendResult, error) {
-	result := sendResult{OK: true, ChannelID: loc.channelID, ThreadTS: m.threadTS}
+func (c *command) sendToChannel(ctx context.Context, loc cmdutil.Located, m outgoing) (sendResult, error) {
+	result := sendResult{OK: true, ChannelID: loc.ChannelID, ThreadTS: m.threadTS}
 
 	switch {
 	case m.postAt != 0:
-		params := m.chatParams(loc.channelID)
+		params := m.chatParams(loc.ChannelID)
 		params["post_at"] = m.postAt
 		resp, err := loc.Client.API(ctx, "chat.scheduleMessage", params)
 		if err != nil {
-			return sendResult{}, explainSendError(err, loc.channelID)
+			return sendResult{}, explainSendError(err, loc.ChannelID)
 		}
-		result.ChannelID = cmp.Or(jsonx.Str(resp["channel"]), loc.channelID)
+		result.ChannelID = cmp.Or(jsonx.Str(resp["channel"]), loc.ChannelID)
 		result.ScheduledMessageID = jsonx.Str(resp["scheduled_message_id"])
 		result.PostAt = cmp.Or(responseInt(resp["post_at"]), m.postAt)
 		if result.ScheduledMessageID == "" {
@@ -280,11 +257,11 @@ func (c *command) sendToChannel(ctx context.Context, loc located, m outgoing) (s
 		}
 
 	case len(m.attach) == 0:
-		resp, err := loc.Client.API(ctx, "chat.postMessage", m.chatParams(loc.channelID))
+		resp, err := loc.Client.API(ctx, "chat.postMessage", m.chatParams(loc.ChannelID))
 		if err != nil {
-			return sendResult{}, explainSendError(err, loc.channelID)
+			return sendResult{}, explainSendError(err, loc.ChannelID)
 		}
-		result.ChannelID = cmp.Or(jsonx.Str(resp["channel"]), loc.channelID)
+		result.ChannelID = cmp.Or(jsonx.Str(resp["channel"]), loc.ChannelID)
 		result.TS = jsonx.Str(resp["ts"])
 		if loc.WorkspaceURL != "" && result.TS != "" {
 			result.Permalink = slackurl.BuildMessageURL(loc.WorkspaceURL, result.ChannelID, result.TS, m.threadTS)
@@ -295,12 +272,12 @@ func (c *command) sendToChannel(ctx context.Context, loc located, m outgoing) (s
 			c.rt.Hintf("Warning: rich text formatting is not supported with file attachments; sending as plain text.")
 		}
 		uploaded, err := upload.ToChannel(ctx, loc.Client, upload.Destination{
-			ChannelID:      loc.channelID,
+			ChannelID:      loc.ChannelID,
 			ThreadTS:       m.threadTS,
 			InitialComment: m.text,
 		}, m.attach)
 		if err != nil {
-			return sendResult{}, explainSendError(err, loc.channelID)
+			return sendResult{}, explainSendError(err, loc.ChannelID)
 		}
 		result.Files = uploaded
 	}

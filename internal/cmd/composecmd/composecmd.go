@@ -16,18 +16,17 @@ import (
 
 	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/jsonx"
 	"github.com/maelvls/slackcli/internal/slack/channels"
-	"github.com/maelvls/slackcli/internal/slack/messages"
 	"github.com/maelvls/slackcli/internal/slack/slacktext"
 	"github.com/maelvls/slackcli/internal/slack/slackurl"
-	"github.com/maelvls/slackcli/internal/slackapi"
 	"github.com/maelvls/slackcli/internal/slackid"
 )
 
 // Options are the settings of a compose session.
 type Options struct {
-	// Workspace is the effective --workspace selector ("" for default).
+	// Workspace is the value of the --workspace flag ("" if not given).
 	Workspace string
 	// ThreadTS, when set, makes the message a reply in that thread.
 	ThreadTS string
@@ -86,8 +85,7 @@ func newCommand(c *composer) *cobra.Command {
 			"cancel, close the tab, or never open the editor (30 minutes), the result is {ok, cancelled, reason}.\n\n" +
 			"<target> is a Slack message URL (replies in that message's thread), #name/name, a channel id, or a " +
 			"user id (DM).\n" +
-			"[text] is the initial message text (mrkdwn); it is sent immediately when CI skips the editor. " +
-			`Text that starts with "-" must come after "--".` + "\n\n" +
+			"[text] is the initial message text (mrkdwn); it is sent immediately when CI skips the editor.\n\n" +
 			"The command does not time out: it waits for the human. Stop it with Ctrl-C.\n\n" +
 			"CI: when the CI environment variable is set there is no browser, so the editor is skipped and [text] " +
 			"is sent immediately — except in safe mode, where the command fails instead: safe mode never sends " +
@@ -107,10 +105,11 @@ func newCommand(c *composer) *cobra.Command {
 			return c.rt.Print(out)
 		},
 	}
-	cmd.Flags().StringVar(&opts.Workspace, "workspace", "", "Workspace selector (full URL or unique substring; needed when using #channel/channel id across multiple workspaces)")
+	cmdutil.AddTargetWorkspaceFlag(cmd, &opts.Workspace)
 	cmd.Flags().StringVar(&opts.ThreadTS, "thread-ts", "", "Thread root ts to post into; overrides the URL-derived thread when supplied")
 	cmd.Flags().BoolVar(&opts.NoUnfurl, "no-unfurl", false, "Suppress link and media previews")
-	return clictx.NoTimeout(cmd)
+	// [text] may start with "- ".
+	return clictx.NoTimeout(cmdutil.AllowDashText(cmd))
 }
 
 // composer is Compose with its environment made explicit, for tests.
@@ -143,26 +142,17 @@ func isTerminal(w io.Writer) bool {
 	return err == nil && info.Mode()&os.ModeCharDevice != 0
 }
 
-// inCI reports whether the CI environment variable says this is an
-// automated run.
-func inCI() bool {
-	switch strings.ToLower(strings.TrimSpace(os.Getenv("CI"))) {
-	case "", "0", "false":
-		return false
-	}
-	return true
-}
-
 func (c *composer) compose(ctx context.Context, targetInput, initialText string, opts Options) (map[string]any, error) {
 	rt := c.rt
-	target, err := slackurl.ParseTarget(targetInput)
+	target, err := cmdutil.ParseTarget(rt, targetInput, opts.Workspace)
 	if err != nil {
 		return nil, err
 	}
-	if opts.ThreadTS != "" && !slackurl.IsTS(opts.ThreadTS) {
-		return nil, fmt.Errorf("invalid thread ts %q: expected a Slack message ts such as 1770165109.628379", opts.ThreadTS)
+	threadTS, err := cmdutil.ParseTS("--thread-ts", opts.ThreadTS)
+	if err != nil {
+		return nil, err
 	}
-	ci := inCI()
+	ci := clictx.IsCI()
 	if ci {
 		// The one rule that must hold whatever the caller checked: safe
 		// mode never sends without a human.
@@ -174,32 +164,31 @@ func (c *composer) compose(ctx context.Context, targetInput, initialText string,
 		}
 	}
 
-	workspace := target.WorkspaceURL
-	if workspace == "" {
-		workspace = rt.EffectiveWorkspace(opts.Workspace)
-		if target.Kind == slackurl.TargetChannel {
-			if err := rt.AssertWorkspaceForChannelNames(workspace, target.Channel); err != nil {
-				return nil, err
+	dest, err := cmdutil.WithTarget(ctx, rt, target, func(loc cmdutil.Located) (destination, error) {
+		dest := destination{
+			// Pin the workspace: the message goes where the editor says.
+			workspace:    cmp.Or(loc.WorkspaceURL, target.Workspace),
+			workspaceURL: loc.WorkspaceURL,
+			channelID:    loc.ChannelID,
+			threadTS:     threadTS,
+		}
+		// A message URL replies in that message's thread, unless
+		// --thread-ts says otherwise.
+		if dest.threadTS == "" {
+			var err error
+			if dest.threadTS, err = target.ReplyThreadTS(ctx, loc.Client); err != nil {
+				return destination{}, err
 			}
 		}
-	}
-	if target.Kind == slackurl.TargetURL {
-		if hint := slackurl.TruncatedURLHint(target.Ref); hint != "" {
-			rt.Hintf("%s", hint)
+		// The editor shows where the message goes.
+		if target.Kind == slackurl.TargetChannel {
+			if ch := slackid.ParseChannelInput(target.Channel); !ch.IsID {
+				dest.channelName = ch.Value
+			}
 		}
-	}
-
-	dest, err := clictx.WithAutoRefresh(ctx, rt, func() (destination, error) {
-		r, err := rt.Client(ctx, workspace)
-		if err != nil {
-			return destination{}, err
+		if !ci && dest.channelName == "" {
+			dest.channelName = channels.ResolveName(ctx, loc.Client, dest.channelID)
 		}
-		dest, err := resolveDestination(ctx, r.Client, target, opts.ThreadTS, !ci)
-		if err != nil {
-			return destination{}, err
-		}
-		// Pin the workspace: the message goes where the editor says.
-		dest.workspace, dest.workspaceURL = cmp.Or(r.WorkspaceURL, workspace), r.WorkspaceURL
 		return dest, nil
 	})
 	if err != nil {
@@ -282,41 +271,6 @@ func (d destination) label() string {
 		return "the DM with " + d.channelName
 	}
 	return "#" + d.channelName
-}
-
-// resolveDestination turns a target into a channel and thread. A message
-// URL replies in that message's thread, unless threadTS (--thread-ts)
-// says otherwise; a user ID is the DM with that user. withName also looks
-// up the display name.
-func resolveDestination(ctx context.Context, client *slackapi.Client, target slackurl.Target, threadTS string, withName bool) (destination, error) {
-	dest := destination{threadTS: threadTS}
-	var err error
-	switch target.Kind {
-	case slackurl.TargetURL:
-		dest.channelID = target.Ref.ChannelID
-		if threadTS == "" {
-			msg, err := messages.FetchMessage(ctx, client, target.Ref, false)
-			if err != nil {
-				return destination{}, err
-			}
-			dest.threadTS = cmp.Or(msg.ThreadTS, msg.TS)
-		}
-	case slackurl.TargetUser:
-		if dest.channelID, err = channels.OpenDM(ctx, client, target.UserID); err != nil {
-			return destination{}, err
-		}
-	default:
-		if dest.channelID, err = channels.ResolveID(ctx, client, target.Channel); err != nil {
-			return destination{}, err
-		}
-		if ch := slackid.ParseChannelInput(target.Channel); !ch.IsID {
-			dest.channelName = ch.Value
-		}
-	}
-	if withName && dest.channelName == "" {
-		dest.channelName = channels.ResolveName(ctx, client, dest.channelID)
-	}
-	return dest, nil
 }
 
 // page describes the session to the editor page.

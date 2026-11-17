@@ -57,10 +57,24 @@ func (c *Context) Client(ctx context.Context, workspace string) (*Resolved, erro
 		}
 	}
 
+	// Why a source that should have had credentials did not yield them.
+	// "Not installed" and "not signed in" (authextract.ErrNotFound) are
+	// the normal case and say nothing.
+	var failures []string
+	failed := func(source string, err error) {
+		if err != nil && !errors.Is(err, authextract.ErrNotFound) {
+			failures = append(failures, source+": "+err.Error())
+		}
+	}
+
 	// 2. Slack Desktop: import every team, then look again.
 	if c.Desktop != nil {
-		if extracted, err := c.Desktop(ctx); err == nil && extracted != nil && len(extracted.Teams) > 0 {
-			if err := c.Import(extracted); err == nil {
+		extracted, err := c.Desktop(ctx)
+		failed("Slack Desktop", err)
+		if err == nil && extracted != nil && len(extracted.Teams) > 0 {
+			if err := c.Import(extracted); err != nil {
+				failed("saving the Slack Desktop credentials", err)
+			} else {
 				ws, err := c.pickStored(selector, selectorURL)
 				if err != nil {
 					return nil, err
@@ -75,11 +89,15 @@ func (c *Context) Client(ctx context.Context, workspace string) (*Resolved, erro
 	}
 
 	// 3. Browsers: import the matching team only.
-	for _, extract := range []Extractor{c.Chrome, c.Brave, c.Firefox} {
-		if extract == nil {
+	for _, browser := range []struct {
+		name    string
+		extract Extractor
+	}{{"Chrome", c.Chrome}, {"Brave", c.Brave}, {"Firefox", c.Firefox}} {
+		if browser.extract == nil {
 			continue
 		}
-		extracted, err := extract(ctx)
+		extracted, err := browser.extract(ctx)
+		failed(browser.name, err)
 		if err != nil || extracted == nil || len(extracted.Teams) == 0 {
 			continue // not installed, not logged in, AppleScript disabled…
 		}
@@ -100,10 +118,14 @@ func (c *Context) Client(ctx context.Context, workspace string) (*Resolved, erro
 		return c.resolved(wss[0].Auth, wss[0].URL), nil
 	}
 
-	if selector != "" {
-		return nil, fmt.Errorf(`no Slack credentials for workspace %q. Run "%[2]s auth whoami" to list configured workspaces, or import credentials with "%[2]s auth import-desktop" (also: import-chrome, import-brave, import-firefox)`, selector, appinfo.Name)
+	var tried string
+	if len(failures) > 0 {
+		tried = ". The automatic lookup failed for: " + strings.Join(failures, "; ")
 	}
-	return nil, fmt.Errorf(`no Slack credentials available. Run "%[1]s auth import-desktop" (also: import-chrome, import-brave, import-firefox), or set SLACK_TOKEN (plus SLACK_COOKIE_D for xoxc- tokens)`, appinfo.Name)
+	if selector != "" {
+		return nil, fmt.Errorf(`no Slack credentials for workspace %q. Run "%[2]s auth whoami" to list configured workspaces, or import credentials with "%[2]s auth import-desktop" (also: import-chrome, import-brave, import-firefox)%[3]s`, selector, appinfo.Name, tried)
+	}
+	return nil, fmt.Errorf(`no Slack credentials available. Run "%[1]s auth import-desktop" (also: import-chrome, import-brave, import-firefox), or set SLACK_TOKEN (plus SLACK_COOKIE_D for xoxc- tokens)%[2]s`, appinfo.Name, tried)
 }
 
 func (c *Context) clientFromEnv(a slackapi.Auth, selector, selectorURL string) (*Resolved, error) {

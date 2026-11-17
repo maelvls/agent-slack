@@ -43,7 +43,7 @@ has accepted the change. This is a write action: it is blocked in safe mode.`,
   canvas edit "https://acme.slack.com/docs/T12345678/F12345678" --operation rename --title "Launch plan (final)"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := safeModeError(rt, "canvas edit", "edit"); err != nil {
+			if err := rt.CheckSafeMode("canvas edit"); err != nil {
 				return err
 			}
 			t, err := parseTarget(rt, args[0], workspace)

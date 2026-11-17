@@ -337,9 +337,9 @@ func TestInvalidFlagsFailBeforeAnyCall(t *testing.T) {
 		want string
 	}{
 		{[]string{"messages", "x", "--limit", "abc"}, `invalid argument "abc" for "--limit"`},
-		{[]string{"messages", "x", "--limit", "0"}, "invalid --limit 0: it must be between 1 and 200"},
-		{[]string{"messages", "x", "--limit", "-3"}, "invalid --limit -3"},
-		{[]string{"files", "x", "--limit", "201"}, "invalid --limit 201"},
+		{[]string{"messages", "x", "--limit", "0"}, "invalid --limit value 0: must be between 1 and 200"},
+		{[]string{"messages", "x", "--limit", "-3"}, "invalid --limit value -3"},
+		{[]string{"files", "x", "--limit", "201"}, "invalid --limit value 201"},
 		{[]string{"messages", "x", "--limit", "20.5"}, `invalid argument "20.5" for "--limit"`},
 		{[]string{"messages", "x", "--max-content-chars", "lots"}, `invalid argument "lots" for "--max-content-chars"`},
 		{[]string{"messages", "x", "--max-content-chars", "0"}, "-1 for unlimited"},

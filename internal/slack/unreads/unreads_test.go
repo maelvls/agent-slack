@@ -130,12 +130,12 @@ func TestFetch(t *testing.T) {
 				Messages: []Message{{TS: "301.000001", Author: &Author{UserID: "U3"}, Content: "@you"}}},
 			{ChannelID: "D1", ChannelName: "user-U9", ChannelType: "dm", UnreadCount: intp(1), MentionCount: 1,
 				Messages: []Message{{TS: "11.000001", Author: &Author{UserID: "U9"}, Content: "hi"}}},
-			{ChannelID: "C1", ChannelName: "general", ChannelType: "channel", UnreadCount: intp(2),
+			{ChannelID: "C1", ChannelName: "general", ChannelType: "channel", UnreadCount: intp(3), SystemMessagesHidden: 1,
 				Messages: []Message{
 					{TS: "101.000009", Author: &Author{BotID: "B1"}, Content: "first", ThreadTS: "101.000009"},
 					{TS: "103.000002", Author: &Author{UserID: "U1"}, Content: "third"},
 				}},
-			{ChannelID: "G1", ChannelName: "mpdm-a--b-1", ChannelType: "mpim", UnreadCount: intp(0), Messages: []Message{}},
+			{ChannelID: "G1", ChannelName: "mpdm-a--b-1", ChannelType: "mpim", Messages: []Message{}},
 		},
 		Threads: &Threads{HasUnreads: true, MentionCount: 4},
 	}
@@ -172,7 +172,7 @@ func dump(res Result) string {
 		if c.UnreadCount != nil {
 			count = fmt.Sprint(*c.UnreadCount)
 		}
-		fmt.Fprintf(&b, "  %s %q %s unread=%s mentions=%d truncated=%v err=%q:", c.ChannelID, c.ChannelName, c.ChannelType, count, c.MentionCount, c.MessagesTruncated, c.MessagesError)
+		fmt.Fprintf(&b, "  %s %q %s unread=%s lower_bound=%v mentions=%d system_hidden=%d truncated=%v err=%q:", c.ChannelID, c.ChannelName, c.ChannelType, count, c.UnreadCountIsLowerBound, c.MentionCount, c.SystemMessagesHidden, c.MessagesTruncated, c.MessagesError)
 		for _, m := range c.Messages {
 			fmt.Fprintf(&b, " {%s %+v %q %s %d}", m.TS, m.Author, m.Content, m.ThreadTS, m.ReplyCount)
 		}
@@ -369,6 +369,90 @@ func TestFetchBoundsConcurrency(t *testing.T) {
 	for i, c := range res.Channels {
 		if id := fmt.Sprintf("C%03d", i); c.ChannelID != id || c.ChannelName != "n"+id || len(c.Messages) != 1 {
 			t.Fatalf("channel %d = %+v", i, c)
+		}
+	}
+}
+
+// TestFetchUnreadCountIsHonest covers the conversations whose unread
+// messages are (partly) system messages: live, they were reported as
+// "unread_count": 0 with "messages_truncated": true.
+func TestFetchUnreadCountIsHonest(t *testing.T) {
+	join := func(ts string) map[string]any { return msg(ts, "joined", "subtype", "channel_join", "user", "U1") }
+	entry := func(id string, extra ...any) map[string]any {
+		e := map[string]any{"id": id, "has_unreads": true, "last_read": "100.000001"}
+		for i := 0; i+1 < len(extra); i += 2 {
+			e[extra[i].(string)] = extra[i+1]
+		}
+		return e
+	}
+	ws := workspace{
+		counts: map[string]any{"channels": []any{
+			entry("C1"), entry("C2"), entry("C3"), entry("C4"),
+			entry("C5", "unread_count_display", 0.0),
+			entry("C6", "unread_count_display", 7.0),
+			entry("C7", "unread_count_display", 1.0),
+		}},
+		history: map[string]map[string]any{
+			// Only joins, and more unread messages than were fetched.
+			"C1": {"has_more": true, "messages": []any{join("102.000001"), join("101.000001")}},
+			// Only joins, all of them fetched.
+			"C2": {"messages": []any{join("102.000001"), join("101.000001")}},
+			// A join and a message, with more.
+			"C3": {"has_more": true, "messages": []any{msg("102.000001", "hello", "user", "U2"), join("101.000001")}},
+			// C4 is unread without any unread message (thread replies).
+			// A count of 0 from Slack means nothing next to has_unreads.
+			"C5": {"messages": []any{msg("101.000001", "hello", "user", "U2")}},
+			// Slack's own count is exact even when the page is not …
+			"C6": {"has_more": true, "messages": []any{msg("102.000001", "b"), msg("101.000001", "a")}},
+			// … but cannot be smaller than what was fetched.
+			"C7": {"messages": []any{msg("102.000001", "b"), msg("101.000001", "a")}},
+		},
+	}
+	res, err := Fetch(context.Background(), ws.recorder().client(), Options{MaxMessages: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type summary struct {
+		count         int // -1: absent
+		lowerBound    bool
+		shown, hidden int
+		truncated     bool
+	}
+	summarize := func(c Channel) summary {
+		s := summary{count: -1, lowerBound: c.UnreadCountIsLowerBound, shown: len(c.Messages), hidden: c.SystemMessagesHidden, truncated: c.MessagesTruncated}
+		if c.UnreadCount != nil {
+			s.count = *c.UnreadCount
+		}
+		return s
+	}
+	got := map[string]summary{}
+	for _, c := range res.Channels {
+		got[c.ChannelID] = summarize(c)
+	}
+	want := map[string]summary{
+		"C1": {count: 2, lowerBound: true, hidden: 2, truncated: true},
+		"C2": {count: 2, hidden: 2},
+		"C3": {count: 2, lowerBound: true, shown: 1, hidden: 1, truncated: true},
+		"C4": {count: -1},
+		"C5": {count: 1, shown: 1},
+		"C6": {count: 7, shown: 2, truncated: true},
+		"C7": {count: 2, shown: 2},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got\n%+v\nwant\n%+v\n%s", got, want, dump(res))
+	}
+
+	// IncludeSystem shows the system messages instead of counting them.
+	res, err = Fetch(context.Background(), ws.recorder().client(), Options{MaxMessages: 2, IncludeSystem: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range res.Channels {
+		if c.ChannelID != "C1" {
+			continue
+		}
+		if want := (summary{count: 2, lowerBound: true, shown: 2, truncated: true}); summarize(c) != want {
+			t.Errorf("C1 with system messages = %+v, want %+v", summarize(c), want)
 		}
 	}
 }

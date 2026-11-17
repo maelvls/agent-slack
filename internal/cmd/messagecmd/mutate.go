@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/appinfo"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/slacktext"
-	"github.com/maelvls/slackcli/internal/slack/slackurl"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
@@ -34,30 +34,13 @@ func (c *command) newEdit() *cobra.Command {
 <text> to send the blocks alone. Prints {"ok": true}.
 
 Refused in safe mode (--safe-mode or %s=1).`, messageTargetLong, appinfo.EnvName("SAFE_MODE")),
-		// Flags are parsed by parseArgsWithDashText, so that <text> may
-		// start with "- ".
-		DisableFlagParsing: true,
-		Args:               cobra.ArbitraryArgs,
-		RunE: func(cmd *cobra.Command, raw []string) error {
-			args, ok, err := parseArgsWithDashText(cmd, raw)
-			if !ok {
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := c.rt.CheckSafeMode("message edit"); err != nil {
 				return err
-			}
-			if err := cobra.ExactArgs(2)(cmd, args); err != nil {
-				return err
-			}
-			if c.rt.SafeMode() {
-				return safeModeBlockedError("edit")
 			}
 			ctx := cmd.Context()
-			target, err := slackurl.ParseTarget(args[0])
-			if err != nil {
-				return err
-			}
-			if err := noUserTarget(target, `"message edit"`); err != nil {
-				return err
-			}
-			ts, err := messageTS(target, tsFlag)
+			target, ts, err := cmdutil.ParseMessageTarget(c.rt, cmd.CommandPath(), args[0], workspace, tsFlag)
 			if err != nil {
 				return err
 			}
@@ -80,10 +63,10 @@ Refused in safe mode (--safe-mode or %s=1).`, messageTargetLong, appinfo.EnvName
 				params["blocks"] = blocks
 			}
 
-			_, err = withTarget(ctx, c, target, workspace, func(loc located) (struct{}, error) {
-				params["channel"] = loc.channelID
+			_, err = cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (struct{}, error) {
+				params["channel"] = loc.ChannelID
 				_, err := loc.Client.API(ctx, "chat.update", params)
-				return struct{}{}, explainMutationError(err, "edit", loc.channelID, ts)
+				return struct{}{}, explainMutationError(err, "edit", loc.ChannelID, ts)
 			})
 			if err != nil {
 				return err
@@ -91,11 +74,11 @@ Refused in safe mode (--safe-mode or %s=1).`, messageTargetLong, appinfo.EnvName
 			return c.rt.Print(okResult{OK: true})
 		},
 	}
-	f := cmd.Flags()
-	f.StringVar(&workspace, "workspace", "", workspaceUsage)
-	f.StringVar(&tsFlag, "ts", "", tsUsage)
-	f.StringVar(&blocksPath, "blocks", "", blocksUsage)
-	return cmd
+	cmdutil.AddTargetWorkspaceFlag(cmd, &workspace)
+	cmd.Flags().StringVar(&tsFlag, "ts", "", cmdutil.MessageTSUsage)
+	cmd.Flags().StringVar(&blocksPath, "blocks", "", blocksUsage)
+	// <text> may start with "- ".
+	return cmdutil.AllowDashText(cmd)
 }
 
 func (c *command) newDelete() *cobra.Command {
@@ -110,24 +93,17 @@ func (c *command) newDelete() *cobra.Command {
 Prints {"ok": true}. Refused in safe mode (--safe-mode or %s=1).`, messageTargetLong, appinfo.EnvName("SAFE_MODE")),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if c.rt.SafeMode() {
-				return safeModeBlockedError("delete")
+			if err := c.rt.CheckSafeMode("message delete"); err != nil {
+				return err
 			}
 			ctx := cmd.Context()
-			target, err := slackurl.ParseTarget(args[0])
+			target, ts, err := cmdutil.ParseMessageTarget(c.rt, cmd.CommandPath(), args[0], workspace, tsFlag)
 			if err != nil {
 				return err
 			}
-			if err := noUserTarget(target, `"message delete"`); err != nil {
-				return err
-			}
-			ts, err := messageTS(target, tsFlag)
-			if err != nil {
-				return err
-			}
-			_, err = withTarget(ctx, c, target, workspace, func(loc located) (struct{}, error) {
-				_, err := loc.Client.API(ctx, "chat.delete", map[string]any{"channel": loc.channelID, "ts": ts})
-				return struct{}{}, explainMutationError(err, "delete", loc.channelID, ts)
+			_, err = cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (struct{}, error) {
+				_, err := loc.Client.API(ctx, "chat.delete", map[string]any{"channel": loc.ChannelID, "ts": ts})
+				return struct{}{}, explainMutationError(err, "delete", loc.ChannelID, ts)
 			})
 			if err != nil {
 				return err
@@ -135,8 +111,8 @@ Prints {"ok": true}. Refused in safe mode (--safe-mode or %s=1).`, messageTarget
 			return c.rt.Print(okResult{OK: true})
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", workspaceUsage)
-	cmd.Flags().StringVar(&tsFlag, "ts", "", tsUsage)
+	cmdutil.AddTargetWorkspaceFlag(cmd, &workspace)
+	cmd.Flags().StringVar(&tsFlag, "ts", "", cmdutil.MessageTSUsage)
 	return cmd
 }
 
@@ -189,14 +165,7 @@ Prints {"ok": true}. Not covered by safe mode.`, short, messageTargetLong, emoji
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
-			target, err := slackurl.ParseTarget(args[0])
-			if err != nil {
-				return err
-			}
-			if err := noUserTarget(target, `"message react"`); err != nil {
-				return err
-			}
-			ts, err := messageTS(target, tsFlag)
+			target, ts, err := cmdutil.ParseMessageTarget(c.rt, cmd.CommandPath(), args[0], workspace, tsFlag)
 			if err != nil {
 				return err
 			}
@@ -204,9 +173,9 @@ Prints {"ok": true}. Not covered by safe mode.`, short, messageTargetLong, emoji
 			if err != nil {
 				return err
 			}
-			_, err = withTarget(ctx, c, target, workspace, func(loc located) (struct{}, error) {
+			_, err = cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (struct{}, error) {
 				_, err := loc.Client.API(ctx, method, map[string]any{
-					"channel":   loc.channelID,
+					"channel":   loc.ChannelID,
 					"timestamp": ts,
 					"name":      name,
 				})
@@ -226,7 +195,7 @@ Prints {"ok": true}. Not covered by safe mode.`, short, messageTargetLong, emoji
 			return c.rt.Print(okResult{OK: true})
 		},
 	}
-	cmd.Flags().StringVar(&workspace, "workspace", "", workspaceUsage)
-	cmd.Flags().StringVar(&tsFlag, "ts", "", tsUsage)
+	cmdutil.AddTargetWorkspaceFlag(cmd, &workspace)
+	cmd.Flags().StringVar(&tsFlag, "ts", "", cmdutil.MessageTSUsage)
 	return cmd
 }

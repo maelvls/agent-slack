@@ -58,7 +58,7 @@ func New(rt *clictx.Context) *cobra.Command {
 	cmd.SetVersionTemplate("{{.Version}}\n")
 	cmd.CompletionOptions.HiddenDefaultCmd = true
 	cmd.PersistentFlags().BoolVar(&rt.SafeModeFlag, "safe-mode", false,
-		fmt.Sprintf(`Human-in-the-loop enforcement: redirect "message send" to the review editor and block "message edit"/"message delete" (also: %s=1)`, appinfo.EnvName("SAFE_MODE")))
+		fmt.Sprintf(`Keep a human in the loop: %s (also: %s=1)`, clictx.SafeModeSummary(), appinfo.EnvName("SAFE_MODE")))
 
 	cmd.AddCommand(
 		authcmd.New(rt),

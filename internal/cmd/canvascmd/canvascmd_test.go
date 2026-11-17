@@ -282,6 +282,17 @@ func TestEditReplacesACanvasGivenByURL(t *testing.T) {
 	wantJSON(t, out, map[string]any{"ok": true, "canvas": map[string]any{"id": "F12345678", "operation": "replace"}})
 }
 
+// A --workspace given along with a canvas URL may repeat the URL's
+// workspace, but not name another one.
+func TestWorkspaceFlagWithACanvasURL(t *testing.T) {
+	h := newHarness(t, browserWorkspace(), standardWorkspace())
+	url := acmeURL + "/docs/T12345678/F12345678"
+
+	h.output("", "edit", url, "--markdown", "# Revised\n", "--workspace", "acme")
+	h.fails("contradicts the URL, which is in workspace "+acmeURL, "edit", url, "--markdown", "x", "--workspace", "https://other.slack.com")
+	h.fails("contradicts the URL", "get", url, "--workspace", "https://other.slack.com")
+}
+
 func TestEditInsertsFromAFileWithASectionID(t *testing.T) {
 	h := newHarness(t, standardWorkspace())
 	path := writeFile(t, "addition.md", []byte("Added\n"))

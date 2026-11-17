@@ -3,12 +3,12 @@ package searchcmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/search"
 )
 
@@ -113,11 +113,11 @@ func run(ctx context.Context, rt *clictx.Context, kind search.Kind, query string
 	if err != nil {
 		return fmt.Errorf("--content-type: %w", err)
 	}
-	if f.limit < 1 || f.limit > search.MaxLimit {
-		return fmt.Errorf("invalid --limit %d: it must be between 1 and %d (to go further back, repeat the search with an earlier --before date)", f.limit, search.MaxLimit)
+	if err := cmdutil.CheckLimit(f.limit, search.MaxLimit, "to go further back, repeat the search with an earlier --before date"); err != nil {
+		return err
 	}
-	if f.maxContentChars == 0 {
-		return errors.New("invalid --max-content-chars 0: pass a positive number of characters, or -1 for unlimited")
+	if err := cmdutil.CheckMaxChars("--max-content-chars", f.maxContentChars); err != nil {
+		return err
 	}
 
 	workspace := rt.EffectiveWorkspace(f.workspace)

@@ -37,11 +37,6 @@ func New(rt *clictx.Context) *cobra.Command {
 	return newCommand(&command{rt: rt, compose: composecmd.Compose, now: time.Now})
 }
 
-const (
-	workspaceUsage = "Workspace selector (full URL or unique substring). Needed for #channel/channel-ID/user-ID targets when several workspaces are configured; a Slack URL target that names its workspace takes precedence"
-	tsUsage        = `Message ts, e.g. 1770165109.628379 (required when <target> is a channel; redundant with a message URL)`
-)
-
 func newCommand(c *command) *cobra.Command {
 	var opts readOptions
 	cmd := &cobra.Command{
@@ -51,9 +46,10 @@ func newCommand(c *command) *cobra.Command {
 
 "%[1]s message <target>" is short for "%[1]s message get <target>".
 
-Safe mode (--safe-mode or %[2]s=1) keeps a human in the loop: "send" opens
-the compose editor instead of posting, and "edit" and "delete" are refused.
-"react" and "scheduled cancel" are NOT covered by safe mode.`, appinfo.Name, appinfo.EnvName("SAFE_MODE")),
+Safe mode (--safe-mode or %[2]s=1) keeps a human in the loop:
+%[3]s.
+"message react" and "message scheduled cancel" are NOT covered by safe mode.`,
+			appinfo.Name, appinfo.EnvName("SAFE_MODE"), clictx.SafeModeSummary()),
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {

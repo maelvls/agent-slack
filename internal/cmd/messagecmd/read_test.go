@@ -78,7 +78,7 @@ func TestUnknownSubcommand(t *testing.T) {
 		{[]string{"frobnicate", "x", "y"}, `unknown command "frobnicate"`},
 		{[]string{testURL, "extra"}, "accepts exactly one <target>"},
 		// A single unknown word is a channel name, which needs --ts.
-		{[]string{"announcements"}, "you must pass --ts"},
+		{[]string{"announcements"}, "--ts is required"},
 		{[]string{"react", "ad", testURL, "eyes"}, `unknown command "ad" for "message react"`},
 		{[]string{"scheduled", "cancle", "Q1"}, `unknown command "cancle" for "message scheduled"`},
 	}
@@ -103,8 +103,8 @@ func TestGetValidation(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"channel without ts", []string{"get", testChannel}, `you must pass --ts "<seconds>.<micros>"`},
-		{"blank ts", []string{"get", testChannel, "--ts", "   "}, "you must pass --ts"},
+		{"channel without ts", []string{"get", testChannel}, `--ts is required when the target is a channel: pass --ts "<seconds>.<micros>"`},
+		{"blank ts", []string{"get", testChannel, "--ts", "   "}, "--ts is required"},
 		{"garbage ts", []string{"get", testChannel, "--ts", "abc"}, "invalid --ts"},
 		{"truncated ts", []string{"get", testChannel, "--ts", "1770165109"}, "invalid --ts"},
 		{"ts contradicting URL", []string{"get", testURL, "--ts", "1770160000.000001"}, "contradicts the message URL"},
@@ -429,10 +429,10 @@ func TestListValidation(t *testing.T) {
 		want string
 	}{
 		{"limit not a number", []string{testChannel, "--limit", "abc"}, `invalid argument "abc" for "--limit"`},
-		{"limit zero", []string{testChannel, "--limit", "0"}, "must be an integer between 1 and 1000"},
-		{"limit negative", []string{testChannel, "--limit", "-5"}, "must be an integer between 1 and 1000"},
+		{"limit zero", []string{testChannel, "--limit", "0"}, "must be between 1 and 1000"},
+		{"limit negative", []string{testChannel, "--limit", "-5"}, "must be between 1 and 1000"},
 		{"limit fractional", []string{testChannel, "--limit", "3.5"}, `invalid argument "3.5" for "--limit"`},
-		{"limit above the maximum", []string{testChannel, "--limit", "1001"}, "must be an integer between 1 and 1000"},
+		{"limit above the maximum", []string{testChannel, "--limit", "1001"}, "must be between 1 and 1000"},
 		{"oldest garbage", []string{testChannel, "--oldest", "yesterday"}, "invalid --oldest"},
 		{"latest garbage", []string{testChannel, "--latest", "now"}, "invalid --latest"},
 		{"reaction filter without oldest", []string{testChannel, "--with-reaction", "dart"}, `reaction filters require --oldest "<seconds>.<micros>" to bound scan size.`},
@@ -451,19 +451,6 @@ func TestListValidation(t *testing.T) {
 			h.mustFail(tt.want, append([]string{"list"}, tt.args...)...)
 			h.wantCalls()
 		})
-	}
-}
-
-func TestCheckLimit(t *testing.T) {
-	for _, n := range []int{1, 10, 200, 1000} {
-		if err := checkLimit(n); err != nil {
-			t.Errorf("checkLimit(%d) = %v", n, err)
-		}
-	}
-	for _, n := range []int{0, -5, 1001} {
-		if err := checkLimit(n); err == nil {
-			t.Errorf("checkLimit(%d) accepted", n)
-		}
 	}
 }
 

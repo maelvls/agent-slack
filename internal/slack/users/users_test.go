@@ -85,6 +85,14 @@ type directory struct {
 	byEmail      map[string]map[string]any
 	openChannel  string
 	failInfoWith string
+	// posted maps the handles of the members who posted a message to
+	// their user ID: the ones search.messages "from:@handle" finds.
+	posted map[string]string
+	// nearMisses are search matches from other authors, which Slack
+	// returns for any "from:" query.
+	nearMisses  []map[string]any
+	searchErr   string
+	alreadyOpen bool
 }
 
 func (d directory) recorder() *recorder {
@@ -107,6 +115,19 @@ func (d directory) recorder() *recorder {
 				resp["response_metadata"] = map[string]any{"next_cursor": fmt.Sprintf("page%d", i+1)}
 			}
 			return resp, nil
+		case "search.messages":
+			if d.searchErr != "" {
+				return apiError(d.searchErr), nil
+			}
+			var matches []any
+			for _, m := range d.nearMisses {
+				matches = append(matches, m)
+			}
+			handle := strings.TrimPrefix(params["query"].(string), "from:@")
+			if id := d.posted[handle]; id != "" {
+				matches = append(matches, map[string]any{"user": id, "username": handle, "text": "hello"})
+			}
+			return map[string]any{"messages": map[string]any{"matches": matches}}, nil
 		case "users.lookupByEmail":
 			if d.lookupErr != "" {
 				return apiError(d.lookupErr), nil
@@ -137,7 +158,11 @@ func (d directory) recorder() *recorder {
 			}
 			return map[string]any{"channels": chans}, nil
 		case "conversations.open":
-			return map[string]any{"channel": map[string]any{"id": d.openChannel}}, nil
+			resp := map[string]any{"channel": map[string]any{"id": d.openChannel}}
+			if d.alreadyOpen {
+				resp["no_op"], resp["already_open"] = true, true
+			}
+			return resp, nil
 		}
 		return nil, fmt.Errorf("unexpected method %s", method)
 	}}
@@ -206,7 +231,7 @@ func TestResolveUserID(t *testing.T) {
 		if err != nil || got != "U02HANDLE0" {
 			t.Fatalf("got %q, %v", got, err)
 		}
-		if !reflect.DeepEqual(rec.methods(), []string{"users.list"}) || rec.calls[0].params["limit"] != scanPageSize {
+		if !reflect.DeepEqual(rec.methods(), []string{"search.messages", "users.list"}) || rec.calls[1].params["limit"] != scanPageSize {
 			t.Errorf("calls = %v", rec.calls)
 		}
 	})
@@ -270,7 +295,7 @@ func TestResolveUserID(t *testing.T) {
 			t.Fatalf("got %q, %v", got, err)
 		}
 		// Stops at the page that has the match.
-		if n := len(rec.calls); n != 3 || rec.calls[2].params["cursor"] != "page2" {
+		if n := len(rec.calls); n != 4 || rec.calls[3].params["cursor"] != "page2" {
 			t.Errorf("calls = %v", rec.calls)
 		}
 	})
@@ -371,7 +396,7 @@ func TestResolveUserID(t *testing.T) {
 		}}
 		_, err := ResolveUserID(ctx, rec.client(), "@alice")
 		var nf *NotFoundError
-		if !errors.As(err, &nf) || len(rec.calls) != 2 {
+		if !errors.As(err, &nf) || len(rec.only("users.list")) != 2 {
 			t.Errorf("err = %v after %d calls", err, len(rec.calls))
 		}
 	})
@@ -389,7 +414,7 @@ func TestGetUser(t *testing.T) {
 	}{
 		{"U00000001A", []string{"users.info"}},
 		// The lookup already returned the whole user: no second call.
-		{"@alice", []string{"users.list"}},
+		{"@alice", []string{"search.messages", "users.list"}},
 		{"alice@example.com", []string{"users.lookupByEmail"}},
 	}
 	for _, tt := range tests {

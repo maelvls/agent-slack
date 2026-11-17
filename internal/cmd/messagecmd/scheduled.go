@@ -9,8 +9,8 @@ import (
 
 	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/scheduled"
-	"github.com/maelvls/slackcli/internal/slack/slackurl"
 )
 
 type scheduledListOptions struct {
@@ -33,7 +33,7 @@ const scheduledChannelHelp = "a channel (#name, name or ID), a user ID (its DM) 
 
 func addScheduledListFlags(cmd *cobra.Command, o *scheduledListOptions) {
 	f := cmd.Flags()
-	f.StringVar(&o.workspace, "workspace", "", workspaceUsage)
+	f.StringVar(&o.workspace, "workspace", "", cmdutil.TargetWorkspaceUsage)
 	f.StringVar(&o.channel, "channel", "", "Only messages scheduled in this conversation: "+scheduledChannelHelp)
 	f.StringVar(&o.oldest, "oldest", "", "Only messages scheduled to post after this Unix timestamp (seconds)")
 	f.StringVar(&o.latest, "latest", "", "Only messages scheduled to post before this Unix timestamp (seconds)")
@@ -76,7 +76,7 @@ next_cursor}. "id" and "channel_id" are what "scheduled cancel" needs; pass
 
 func (c *command) runScheduledList(cmd *cobra.Command, opts scheduledListOptions) error {
 	ctx := cmd.Context()
-	limit, err := scheduled.ParseLimit(opts.limit)
+	limit, err := cmdutil.ParseLimit(opts.limit)
 	if err != nil {
 		return err
 	}
@@ -103,13 +103,13 @@ func (c *command) runScheduledList(cmd *cobra.Command, opts scheduledListOptions
 			return scheduled.List(ctx, r.Client, listOpts)
 		})
 	} else {
-		var target slackurl.Target
-		if target, err = slackurl.ParseTarget(opts.channel); err != nil {
+		var target cmdutil.Target
+		if target, err = cmdutil.ParseTarget(c.rt, opts.channel, opts.workspace); err != nil {
 			return fmt.Errorf("--channel: %w", err)
 		}
-		result, err = withTarget(ctx, c, target, opts.workspace, func(loc located) (scheduled.ListResult, error) {
+		result, err = cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (scheduled.ListResult, error) {
 			listOpts := listOpts
-			listOpts.ChannelID = loc.channelID
+			listOpts.ChannelID = loc.ChannelID
 			return scheduled.List(ctx, loc.Client, listOpts)
 		})
 	}
@@ -138,15 +138,15 @@ Prints {ok, channel_id, scheduled_message_id}. Not covered by safe mode.`,
 			if id == "" {
 				return errors.New("<id> is empty: pass the scheduled_message_id of the message to cancel")
 			}
-			target, err := slackurl.ParseTarget(channel)
+			target, err := cmdutil.ParseTarget(c.rt, channel, workspace)
 			if err != nil {
 				return fmt.Errorf("--channel: %w", err)
 			}
-			result, err := withTarget(ctx, c, target, workspace, func(loc located) (cancelResult, error) {
-				if err := scheduled.Cancel(ctx, loc.Client, loc.channelID, id); err != nil {
+			result, err := cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (cancelResult, error) {
+				if err := scheduled.Cancel(ctx, loc.Client, loc.ChannelID, id); err != nil {
 					return cancelResult{}, err
 				}
-				return cancelResult{OK: true, ChannelID: loc.channelID, ScheduledMessageID: id}, nil
+				return cancelResult{OK: true, ChannelID: loc.ChannelID, ScheduledMessageID: id}, nil
 			})
 			if err != nil {
 				return err
@@ -155,7 +155,7 @@ Prints {ok, channel_id, scheduled_message_id}. Not covered by safe mode.`,
 		},
 	}
 	cmd.Flags().StringVar(&channel, "channel", "", "Required: the conversation the message was scheduled in ("+scheduledChannelHelp+`); it is the "channel_id" printed when scheduling`)
-	cmd.Flags().StringVar(&workspace, "workspace", "", workspaceUsage)
+	cmdutil.AddTargetWorkspaceFlag(cmd, &workspace)
 	// MarkFlagRequired only fails for a flag name that does not exist.
 	_ = cmd.MarkFlagRequired("channel")
 	return cmd

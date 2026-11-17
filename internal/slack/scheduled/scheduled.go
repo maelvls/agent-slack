@@ -7,7 +7,6 @@ import (
 	"context"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/maelvls/slackcli/internal/jsonx"
@@ -22,7 +21,7 @@ type ListOptions struct {
 	Cursor string
 	// Oldest and Latest bound post_at, as Unix timestamps in seconds.
 	Oldest, Latest string
-	// Limit is the page size (see ParseLimit); 0 lets Slack choose.
+	// Limit is the page size; 0 lets Slack choose.
 	Limit int
 }
 
@@ -91,17 +90,4 @@ func Cancel(ctx context.Context, client *slackapi.Client, channelID, scheduledMe
 		return fmt.Errorf("cancelling scheduled message %s: %w", scheduledMessageID, err)
 	}
 	return nil
-}
-
-// ParseLimit parses a --limit flag value. An empty value means "not set"
-// and returns 0; anything else must be a positive integer.
-func ParseLimit(raw string) (int, error) {
-	if raw == "" {
-		return 0, nil
-	}
-	n, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || n < 1 {
-		return 0, fmt.Errorf("invalid --limit value %q: must be a positive integer", raw)
-	}
-	return n, nil
 }

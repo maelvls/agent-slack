@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -132,12 +133,13 @@ func TestUnreads(t *testing.T) {
 		"channels": []any{
 			map[string]any{
 				"channel_id": "C000000001", "channel_name": "general", "channel_type": "channel",
-				"unread_count": 2.0, "mention_count": 1.0,
+				"unread_count": 3.0, "unread_count_is_lower_bound": true, "mention_count": 1.0,
 				"messages": []any{
 					map[string]any{"ts": "1700000003.000100", "author": map[string]any{"bot_id": "B000000001"}, "content": "first message"},
 					map[string]any{"ts": "1700000005.000100", "author": map[string]any{"user_id": "U000000002"}, "content": "second message", "thread_ts": "1700000005.000100", "reply_count": 2.0},
 				},
-				"messages_truncated": true,
+				"system_messages_hidden": 1.0,
+				"messages_truncated":     true,
 			},
 			map[string]any{
 				"channel_id": "D000000001", "channel_name": "alice", "channel_type": "dm",
@@ -195,6 +197,56 @@ func TestUnreadsFlags(t *testing.T) {
 		if c.params["limit"] != 5 {
 			t.Errorf("history params = %v", c.params)
 		}
+	}
+}
+
+// TestUnreadsOfSystemMessagesOnly is the live defect: a channel whose
+// unread messages are all joins printed "unread_count": 0 together with
+// "messages_truncated": true.
+func TestUnreadsOfSystemMessagesOnly(t *testing.T) {
+	hasMore := true
+	h := newHarness(t, func(method string, params map[string]any) map[string]any {
+		switch method {
+		case "client.counts":
+			return map[string]any{"channels": []any{map[string]any{"id": "C000000001", "has_unreads": true, "mention_count": 0.0, "last_read": "1700000000.000100"}}}
+		case "conversations.info":
+			return map[string]any{"channel": map[string]any{"name": "sig-network"}}
+		case "conversations.history":
+			return map[string]any{"has_more": hasMore, "messages": []any{
+				map[string]any{"ts": "1700000002.000100", "text": "<@U2> has joined the channel", "subtype": "channel_join", "user": "U000000002"},
+				map[string]any{"ts": "1700000001.000100", "text": "<@U1> has joined the channel", "subtype": "channel_join", "user": "U000000001"},
+			}}
+		}
+		return map[string]any{"ok": false, "error": "unknown_method"}
+	})
+	base := map[string]any{"channel_id": "C000000001", "channel_name": "sig-network", "channel_type": "channel", "unread_count": 2.0, "mention_count": 0.0, "system_messages_hidden": 2.0}
+
+	out, err := h.run("--max-messages", "2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := maps.Clone(base)
+	want["unread_count_is_lower_bound"] = true
+	want["messages_truncated"] = true
+	if got := out["channels"].([]any)[0]; !reflect.DeepEqual(got, want) {
+		t.Errorf("more unreads than fetched: printed %s", h.stdout)
+	}
+
+	// Everything was fetched: nothing is truncated, the count is exact.
+	hasMore = false
+	if out, err = h.run("--max-messages", "2"); err != nil {
+		t.Fatal(err)
+	}
+	if got := out["channels"].([]any)[0]; !reflect.DeepEqual(got, base) {
+		t.Errorf("all unreads fetched: printed %s", h.stdout)
+	}
+
+	if out, err = h.run("--include-system"); err != nil {
+		t.Fatal(err)
+	}
+	got := out["channels"].([]any)[0].(map[string]any)
+	if msgs, _ := got["messages"].([]any); len(msgs) != 2 || got["unread_count"] != 2.0 || got["system_messages_hidden"] != nil {
+		t.Errorf("--include-system: printed %s", h.stdout)
 	}
 }
 

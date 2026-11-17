@@ -10,13 +10,11 @@ import (
 
 	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 )
 
 const (
-	workspaceForTargetsUsage = "Workspace selector (full URL or unique substring; needed when using #channel/channel id across multiple workspaces)"
-	workspaceUsage           = "Workspace selector (full URL or unique substring)"
-	leadingDashNote          = `Text that starts with "-" must come after "--", e.g. -- "- first item".`
-	browserAuthNote          = "Drafts need browser auth (xoxc token + xoxd cookie, e.g. from auth import-desktop): Slack refuses bot and user tokens here."
+	browserAuthNote = "Drafts need browser auth (xoxc token + xoxd cookie, e.g. from auth import-desktop): Slack refuses bot and user tokens here."
 )
 
 // New returns the "draft" command, to be added under "message".
@@ -61,7 +59,7 @@ func newList(rt *clictx.Context) *cobra.Command {
 			return rt.Print(out)
 		},
 	}
-	cmd.Flags().StringVar(&opts.workspace, "workspace", "", workspaceUsage)
+	clictx.AddWorkspaceFlag(cmd, &opts.workspace)
 	cmd.Flags().StringVar(&opts.limit, "limit", "", "Max drafts to return (positive integer; default: all that Slack returns)")
 	cmd.Flags().BoolVar(&opts.all, "all", false, "Include sent/inactive drafts")
 	return cmd
@@ -76,8 +74,8 @@ func newCreate(rt *clictx.Context) *cobra.Command {
 			"in the user's Slack client.\n\n" +
 			"<target> is a Slack message URL (drafts a reply in that message's thread), #name/name, a channel id, " +
 			"or a user id (drafts a DM).\n" +
-			"<text> is the draft text in Slack mrkdwn (*bold*, _italic_, `code`, lists, > quotes, <url|label>). " +
-			leadingDashNote + "\n\n" + browserAuthNote,
+			"<text> is the draft text in Slack mrkdwn (*bold*, _italic_, `code`, lists, > quotes, <url|label>).\n\n" +
+			browserAuthNote,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out, err := create(cmd.Context(), rt, args[0], args[1], opts)
@@ -87,11 +85,12 @@ func newCreate(rt *clictx.Context) *cobra.Command {
 			return rt.Print(out)
 		},
 	}
-	cmd.Flags().StringVar(&opts.workspace, "workspace", "", workspaceForTargetsUsage)
+	cmdutil.AddTargetWorkspaceFlag(cmd, &opts.workspace)
 	cmd.Flags().StringVar(&opts.threadTS, "thread-ts", "", "Thread root ts to draft a reply into (optional; overrides the thread of a message URL target)")
 	cmd.Flags().BoolVar(&opts.broadcast, "broadcast", false, "Also send the thread reply to the channel when posted (requires thread context; not for DMs)")
 	cmd.Flags().StringArrayVar(&opts.attach, "attach", nil, "Attach a local file to the draft (repeatable)")
-	return cmd
+	// <text> may start with "- ".
+	return cmdutil.AllowDashText(cmd)
 }
 
 func newUpdate(rt *clictx.Context) *cobra.Command {
@@ -105,7 +104,7 @@ func newUpdate(rt *clictx.Context) *cobra.Command {
 		Long: "Replace a draft's text, keeping its destination, thread, broadcast flag and attached files unless " +
 			"flags say otherwise.\n\n" +
 			"<draft-id> is the id returned by draft list/create. <text> is the new draft text (mrkdwn); it replaces " +
-			"the existing body. " + leadingDashNote + "\n\n" +
+			"the existing body.\n\n" +
 			"--attach ADDS files to those already attached; it never removes any (remove attachments in the Slack " +
 			"client). Changing the thread or the channel resets the broadcast flag to what the flags ask for.\n" +
 			"Drafts with a scheduled send time, and (without --channel) drafts addressed to several destinations, " +
@@ -126,7 +125,7 @@ func newUpdate(rt *clictx.Context) *cobra.Command {
 			return rt.Print(out)
 		},
 	}
-	cmd.Flags().StringVar(&opts.workspace, "workspace", "", workspaceForTargetsUsage)
+	cmdutil.AddTargetWorkspaceFlag(cmd, &opts.workspace)
 	cmd.Flags().StringVar(&opts.channel, "channel", "", "Re-address the draft to a different channel (#name or id), DM (user id) or thread (message URL)")
 	cmd.Flags().StringVar(&opts.threadTS, "thread-ts", "", "Thread root ts to draft a reply into (optional)")
 	cmd.Flags().BoolVar(&broadcast, "broadcast", false, "Also send the thread reply to the channel when posted (requires thread context; not for DMs)")
@@ -135,7 +134,8 @@ func newUpdate(rt *clictx.Context) *cobra.Command {
 	cmd.Flags().StringArrayVar(&opts.attach, "attach", nil, "Attach one more local file to the draft, in addition to the files it already has (repeatable)")
 	cmd.Flags().StringVar(&opts.lastUpdatedTS, "last-updated-ts", "",
 		"The draft's last_updated_ts as you last read it: the update is refused if the draft changed since (default: the current value, i.e. no conflict detection)")
-	return cmd
+	// <text> may start with "- ".
+	return cmdutil.AllowDashText(cmd)
 }
 
 func newDelete(rt *clictx.Context) *cobra.Command {
@@ -153,7 +153,7 @@ func newDelete(rt *clictx.Context) *cobra.Command {
 			return rt.Print(out)
 		},
 	}
-	cmd.Flags().StringVar(&opts.workspace, "workspace", "", workspaceUsage)
+	clictx.AddWorkspaceFlag(cmd, &opts.workspace)
 	cmd.Flags().StringVar(&opts.lastUpdatedTS, "last-updated-ts", "",
 		"The draft's last_updated_ts as you last read it, for Slack's conflict detection (default: looked up, i.e. delete whatever the draft now is)")
 	return cmd

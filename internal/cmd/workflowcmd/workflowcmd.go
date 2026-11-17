@@ -2,18 +2,15 @@
 package workflowcmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/clictx"
-	"github.com/maelvls/slackcli/internal/slack/channels"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/workflows"
-	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
 const triggerArgHelp = `<trigger> is a trigger ID (Ft…, the "trigger_id" printed by "workflow list")
@@ -35,29 +32,6 @@ describe a trigger and the workflow behind it without side effects, and
 	return cmd
 }
 
-// channelClient returns a client for the selected workspace and the ID of
-// the given channel (ID or name) in it.
-func channelClient(ctx context.Context, rt *clictx.Context, workspace, channel string) (*slackapi.Client, string, error) {
-	r, err := rt.Client(ctx, workspace)
-	if err != nil {
-		return nil, "", err
-	}
-	id, err := channels.ResolveID(ctx, r.Client, channel)
-	if err != nil {
-		return nil, "", err
-	}
-	return r.Client, id, nil
-}
-
-// checkChannel validates a channel argument before any credentials are
-// looked up.
-func checkChannel(rt *clictx.Context, workspace, channel string) error {
-	if strings.Trim(strings.TrimSpace(channel), "#") == "" {
-		return errors.New("the channel is empty: pass a channel ID (C…) or name (#channel)")
-	}
-	return rt.AssertWorkspaceForChannelNames(workspace, channel)
-}
-
 func newList(rt *clictx.Context) *cobra.Command {
 	var workspace string
 	cmd := &cobra.Command{
@@ -74,17 +48,13 @@ that are not bookmarked. If Slack refuses the featured-workflows lookup
 listed and a warning is printed on stderr. No side effects.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ws := rt.EffectiveWorkspace(workspace)
-			if err := checkChannel(rt, ws, args[0]); err != nil {
+			channel, err := cmdutil.ParseChannel(rt, args[0], workspace)
+			if err != nil {
 				return err
 			}
 			ctx := cmd.Context()
-			payload, err := clictx.WithAutoRefresh(ctx, rt, func() (workflows.ChannelWorkflows, error) {
-				client, channelID, err := channelClient(ctx, rt, ws, args[0])
-				if err != nil {
-					return workflows.ChannelWorkflows{}, err
-				}
-				return workflows.List(ctx, client, channelID)
+			payload, err := cmdutil.WithTarget(ctx, rt, channel, func(loc cmdutil.Located) (workflows.ChannelWorkflows, error) {
+				return workflows.List(ctx, loc.Client, loc.ChannelID)
 			})
 			if err != nil {
 				return err
@@ -203,33 +173,30 @@ whether the workflow's steps then succeeded.`,
   workflow run Ft0123ABCDEF --channel "#helpdesk"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if rt.SafeMode() {
-				return fmt.Errorf(`safe mode is active (%s or --safe-mode): "workflow run" is blocked so that an agent cannot start a workflow, which may post messages or act on other systems, without human review. Ask the user to run it, or to disable safe mode`, appinfo.EnvName("SAFE_MODE"))
+			if err := rt.CheckSafeMode("workflow run"); err != nil {
+				return err
 			}
 			trigger, err := workflows.ParseTrigger(args[0])
 			if err != nil {
 				return err
 			}
-			ws := rt.EffectiveWorkspace(workspace)
-			if err := checkChannel(rt, ws, channel); err != nil {
-				return err
+			from, err := cmdutil.ParseChannel(rt, channel, workspace)
+			if err != nil {
+				return fmt.Errorf("--channel: %w", err)
 			}
 			ctx := cmd.Context()
 			// A retry with refreshed credentials only happens when Slack
 			// rejected the credentials, i.e. when nothing was started: one
 			// command never trips the trigger twice.
-			result, err := clictx.WithAutoRefresh(ctx, rt, func() (workflows.RunResult, error) {
-				client, channelID, err := channelClient(ctx, rt, ws, channel)
-				if err != nil {
-					return workflows.RunResult{}, err
-				}
+			result, err := cmdutil.WithTarget(ctx, rt, from, func(loc cmdutil.Located) (workflows.RunResult, error) {
 				shortcutURL := trigger.URL
 				if shortcutURL == "" {
-					if shortcutURL, err = workflows.ResolveShortcutURL(ctx, client, channelID, trigger.ID); err != nil {
+					var err error
+					if shortcutURL, err = workflows.ResolveShortcutURL(ctx, loc.Client, loc.ChannelID, trigger.ID); err != nil {
 						return workflows.RunResult{}, err
 					}
 				}
-				return workflows.Run(ctx, client, workflows.RunInput{ShortcutURL: shortcutURL, ChannelID: channelID, TriggerID: trigger.ID})
+				return workflows.Run(ctx, loc.Client, workflows.RunInput{ShortcutURL: shortcutURL, ChannelID: loc.ChannelID, TriggerID: trigger.ID})
 			})
 			if err != nil {
 				return err

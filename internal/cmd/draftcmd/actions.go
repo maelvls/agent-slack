@@ -10,10 +10,9 @@ import (
 	"sync"
 
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/channels"
 	"github.com/maelvls/slackcli/internal/slack/drafts"
-	"github.com/maelvls/slackcli/internal/slack/scheduled"
-	"github.com/maelvls/slackcli/internal/slack/slackurl"
 	"github.com/maelvls/slackcli/internal/slack/upload"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
@@ -55,7 +54,7 @@ func draftsClient(ctx context.Context, rt *clictx.Context, workspace string) (*s
 }
 
 func list(ctx context.Context, rt *clictx.Context, opts listOptions) (listOutput, error) {
-	limit, err := scheduled.ParseLimit(opts.limit)
+	limit, err := cmdutil.ParseLimit(opts.limit)
 	if err != nil {
 		return listOutput{}, err
 	}
@@ -123,43 +122,39 @@ type createOptions struct {
 }
 
 func create(ctx context.Context, rt *clictx.Context, targetInput, text string, opts createOptions) (draftOutput, error) {
-	target, err := slackurl.ParseTarget(targetInput)
+	target, err := cmdutil.ParseTarget(rt, targetInput, opts.workspace)
 	if err != nil {
 		return draftOutput{}, err
 	}
-	if err := validateThreadTS(opts.threadTS); err != nil {
-		return draftOutput{}, err
-	}
-	workspace, err := targetWorkspace(rt, target, opts.workspace)
+	threadTS, err := cmdutil.ParseTS("--thread-ts", opts.threadTS)
 	if err != nil {
 		return draftOutput{}, err
 	}
 	// Reject impossible --broadcast combinations before any network
 	// round-trip, so that the error names the real problem.
 	if opts.broadcast {
-		if err := checkBroadcastStatically(target, opts.threadTS); err != nil {
+		if err := checkBroadcastStatically(target, threadTS); err != nil {
 			return draftOutput{}, err
 		}
 	}
-	paths := attachPaths(opts.attach)
+	paths := cmdutil.AttachPaths(opts.attach)
 	if strings.TrimSpace(text) == "" && len(paths) == 0 {
 		return draftOutput{}, errors.New("draft text is empty: pass some text (or --attach a file)")
 	}
 	if err := upload.Check(paths); err != nil {
 		return draftOutput{}, err
 	}
-	hintTruncatedURL(rt, target)
 
 	// The uploaded files live outside the retried closure: a re-run after
 	// an auth refresh must reuse them, not upload (and orphan) a second
 	// copy.
 	var files uploads
 	out, err := clictx.WithAutoRefresh(ctx, rt, func() (draftOutput, error) {
-		client, err := draftsClient(ctx, rt, workspace)
+		client, err := draftsClient(ctx, rt, target.Workspace)
 		if err != nil {
 			return draftOutput{}, err
 		}
-		dest, err := resolveDestination(ctx, client, target, opts.threadTS)
+		dest, err := resolveDestination(ctx, client, target, threadTS)
 		if err != nil {
 			return draftOutput{}, err
 		}
@@ -185,7 +180,7 @@ func create(ctx context.Context, rt *clictx.Context, targetInput, text string, o
 		return draftOutput{OK: true, Draft: draft}, nil
 	})
 	if err != nil {
-		files.discard(ctx, rt, workspace)
+		files.discard(ctx, rt, target.Workspace)
 	}
 	return out, err
 }
@@ -210,32 +205,27 @@ func update(ctx context.Context, rt *clictx.Context, draftID, text string, opts 
 			return draftOutput{}, fmt.Errorf("--last-updated-ts: %w", err)
 		}
 	}
-	if err := validateThreadTS(opts.threadTS); err != nil {
+	threadTS, err := cmdutil.ParseTS("--thread-ts", opts.threadTS)
+	if err != nil {
 		return draftOutput{}, err
 	}
-	var target *slackurl.Target
+	var target *cmdutil.Target
 	workspace := rt.EffectiveWorkspace(opts.workspace)
 	if opts.channel != "" {
-		t, err := slackurl.ParseTarget(opts.channel)
+		t, err := cmdutil.ParseTarget(rt, opts.channel, opts.workspace)
 		if err != nil {
 			return draftOutput{}, fmt.Errorf("--channel: %w", err)
 		}
-		target = &t
-		if workspace, err = targetWorkspace(rt, t, opts.workspace); err != nil {
-			return draftOutput{}, err
-		}
+		target, workspace = &t, t.Workspace
 		if opts.broadcast != nil && *opts.broadcast {
-			if err := checkBroadcastStatically(t, opts.threadTS); err != nil {
+			if err := checkBroadcastStatically(t, threadTS); err != nil {
 				return draftOutput{}, err
 			}
 		}
 	}
-	paths := attachPaths(opts.attach)
+	paths := cmdutil.AttachPaths(opts.attach)
 	if err := upload.Check(paths); err != nil {
 		return draftOutput{}, err
-	}
-	if target != nil {
-		hintTruncatedURL(rt, *target)
 	}
 
 	var files uploads // see create
@@ -277,11 +267,11 @@ func update(ctx context.Context, rt *clictx.Context, draftID, text string, opts 
 		}
 		var dest destination
 		if target != nil {
-			if dest, err = resolveDestination(ctx, client, *target, opts.threadTS); err != nil {
+			if dest, err = resolveDestination(ctx, client, *target, threadTS); err != nil {
 				return draftOutput{}, err
 			}
 		} else {
-			dest = destination{channelID: current.ChannelID, threadTS: cmp.Or(opts.threadTS, current.ThreadTS)}
+			dest = destination{channelID: current.ChannelID, threadTS: cmp.Or(threadTS, current.ThreadTS)}
 		}
 		if dest.channelID == "" {
 			return draftOutput{}, fmt.Errorf("draft %s has no destination; pass --channel", draftID)
@@ -382,17 +372,6 @@ func (u *uploads) discard(ctx context.Context, rt *clictx.Context, workspace str
 	if err != nil {
 		rt.Hintf("Warning: could not delete the uploaded files that the failed draft left unused (%s): %v", strings.Join(u.ids, ", "), err)
 	}
-}
-
-// attachPaths trims and de-duplicates --attach values, keeping their order.
-func attachPaths(raw []string) []string {
-	var out []string
-	for _, p := range raw {
-		if p = strings.TrimSpace(p); p != "" && !slices.Contains(out, p) {
-			out = append(out, p)
-		}
-	}
-	return out
 }
 
 // mergeFileIDs appends the newly uploaded IDs to those the draft already

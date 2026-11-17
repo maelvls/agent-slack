@@ -191,7 +191,7 @@ func dmChannels(ctx context.Context, client *slackapi.Client) map[string]string 
 // GetUser returns one user, given a user ID, an email address, a
 // "@handle" or a display name (see ResolveUserID).
 func GetUser(ctx context.Context, client *slackapi.Client, input string) (CompactUser, error) {
-	found, err := lookup(ctx, client, []string{input})
+	found, err := lookupAll(ctx, client, []string{input})
 	if err != nil {
 		return CompactUser{}, err
 	}
@@ -220,6 +220,10 @@ type DMChannel struct {
 	DMChannelID string   `json:"dm_channel_id"`
 	// ChannelType is "dm" for one user, "group_dm" for several.
 	ChannelType string `json:"channel_type"`
+	// AlreadyOpen is Slack's conversations.open "already_open" flag: true
+	// when the conversation was already open for the caller, false when
+	// this call opened it (created it, or reopened a closed one).
+	AlreadyOpen bool `json:"already_open"`
 }
 
 // GetDMChannelForUsers opens (or reuses) the DM with one user, or the
@@ -239,7 +243,7 @@ func GetDMChannelForUsers(ctx context.Context, client *slackapi.Client, inputs [
 		return DMChannel{}, fmt.Errorf("Slack supports a maximum of %d users in a group DM (got %d)", maxGroupDMUsers, len(wanted))
 	}
 
-	found, err := lookup(ctx, client, wanted)
+	found, err := lookupAll(ctx, client, wanted)
 	if err != nil {
 		return DMChannel{}, err
 	}
@@ -264,5 +268,5 @@ func GetDMChannelForUsers(ctx context.Context, client *slackapi.Client, inputs [
 	if strings.HasPrefix(channelID, "D") {
 		channelType = "dm"
 	}
-	return DMChannel{UserIDs: ids, DMChannelID: channelID, ChannelType: channelType}, nil
+	return DMChannel{UserIDs: ids, DMChannelID: channelID, ChannelType: channelType, AlreadyOpen: jsonx.Bool(resp["already_open"])}, nil
 }

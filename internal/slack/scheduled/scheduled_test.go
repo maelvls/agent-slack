@@ -96,20 +96,6 @@ func TestCancel(t *testing.T) {
 	}
 }
 
-func TestParseLimit(t *testing.T) {
-	for raw, want := range map[string]int{"": 0, "5": 5, " 20 ": 20} {
-		if got, err := ParseLimit(raw); err != nil || got != want {
-			t.Errorf("ParseLimit(%q) = %d, %v, want %d", raw, got, err, want)
-		}
-	}
-	// "12abc" used to be accepted as 12.
-	for _, raw := range []string{"12abc", "abc", "0", "-1", "1.5", " "} {
-		if _, err := ParseLimit(raw); err == nil || !strings.Contains(err.Error(), "positive integer") {
-			t.Errorf("ParseLimit(%q) err = %v", raw, err)
-		}
-	}
-}
-
 func TestParseAbsolute(t *testing.T) {
 	want := time.Date(2026, 6, 16, 1, 0, 0, 0, time.UTC).Unix()
 	for _, in := range []string{
@@ -199,7 +185,7 @@ func TestParseRelative(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := ParseRelative(tt.input, tt.now, loc)
+			got, err := ParseRelative("--schedule-in", tt.input, tt.now, loc)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -213,8 +199,8 @@ func TestParseRelative(t *testing.T) {
 func TestParseRelativeUsesTheGivenLocation(t *testing.T) {
 	// 2026-05-30 23:30 in New York is already Sunday 03:30 in UTC.
 	now := time.Date(2026, 5, 30, 23, 30, 0, 0, newYork(t))
-	inNY, _ := ParseRelative("tomorrow 9am", now, newYork(t))
-	inUTC, _ := ParseRelative("tomorrow 9am", now, time.UTC)
+	inNY, _ := ParseRelative("--schedule-in", "tomorrow 9am", now, newYork(t))
+	inUTC, _ := ParseRelative("--schedule-in", "tomorrow 9am", now, time.UTC)
 	if want := time.Date(2026, 5, 31, 9, 0, 0, 0, newYork(t)).Unix(); inNY != want {
 		t.Errorf("New York: got %s", time.Unix(inNY, 0).UTC())
 	}
@@ -253,7 +239,7 @@ func TestParseRelativeErrors(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseRelative(tt.input, tt.now, loc)
+			got, err := ParseRelative("--schedule-in", tt.input, tt.now, loc)
 			if err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("ParseRelative(%q) = %d, %v, want error containing %q", tt.input, got, err, tt.want)
 			}

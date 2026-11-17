@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"iter"
 	"strings"
-	"time"
 
 	"github.com/maelvls/slackcli/internal/appinfo"
+	"github.com/maelvls/slackcli/internal/auth"
 )
 
 // keychainItem identifies a macOS generic password. An empty account
@@ -58,10 +58,6 @@ func (h *host) slackSafeStorage() *safeStorage {
 	}
 }
 
-func keychainTimeout() time.Duration {
-	return appinfo.EnvDurationMS("KEYCHAIN_TIMEOUT_MS", 3*time.Second, false)
-}
-
 // securityItemNotFound is security(1)'s exit status for a missing item.
 const securityItemNotFound = 44
 
@@ -69,7 +65,7 @@ func (s *safeStorage) lookup(ctx context.Context, label, program string, args ..
 	if pw, done := s.results[label]; done {
 		return pw
 	}
-	ctx, cancel := context.WithTimeout(ctx, keychainTimeout())
+	ctx, cancel := context.WithTimeout(ctx, auth.KeychainTimeout())
 	defer cancel()
 	pw, err := s.h.run(ctx, program, args...)
 	if err != nil {

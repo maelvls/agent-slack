@@ -1,30 +1,31 @@
-# Agent Slack — Slack CLI for AI Agents
+# slackcli — Slack CLI for AI agents
 
-> The Slack CLI that gives AI agents full access to Slack. Read messages, search conversations, send replies, manage channels, and download file attachments — all from the command line. Token-efficient JSON output, zero-config auth, multi-workspace support. Works with Claude Code, Cursor, Codex, and any AI agent framework. One install, zero API fees.
+> slackcli is a single-binary Slack CLI built for AI agents. It reads messages, threads, channel history, unreads and canvases, searches messages and files, downloads attachments to local paths, and sends, schedules, edits and reacts — printing compact, pruned JSON. Credentials are picked up from Slack Desktop (or Chrome, Brave, Firefox) with no setup, several workspaces are supported, and a safe mode keeps a human in the loop for anything that posts.
 
-## Quick Start
+## Docs
 
-- [README](https://github.com/stablyai/agent-slack/blob/main/README.md): Full documentation with installation, authentication, and usage examples
-- [Agent Skill (SKILL.md)](https://github.com/stablyai/agent-slack/blob/main/skills/agent-slack/SKILL.md): Integration guide for Claude Code, Cursor, Codex, and custom AI agents
-- [Agent References](https://github.com/stablyai/agent-slack/blob/main/skills/agent-slack/references/): Non-obvious targeting, output, and download behavior
+- [README](https://github.com/maelvls/slackcli/blob/main/README.md): Installation, authentication, command map, safe mode, environment variables, file locations, exit codes
+- [Agent skill (SKILL.md)](https://github.com/maelvls/slackcli/blob/main/skills/slackcli/SKILL.md): How an agent should use slackcli: safety rules, workflow, non-obvious behaviour
+- [Agent references](https://github.com/maelvls/slackcli/blob/main/skills/slackcli/references/): Target selection (URL, channel, user) and JSON output and download behaviour
+- `slackcli --help` and `slackcli <command> --help`: the authoritative reference for commands, flags and output
 
-## Key Features
+## Key features
 
-- Read Slack messages, threads, and channel history from any URL or channel name
-- Search Slack messages and files with filters for channel, user, date, and content type
-- Send, schedule, edit, delete Slack messages, upload local files with `message send --attach` (also on `message draft create/update`), and add/remove emoji reactions programmatically
-- Auto-download Slack file attachments (snippets, images, files) to local paths for AI agent consumption
-- Token-efficient compact JSON output so LLMs can consume Slack data cheaply
-- Zero-config auth: auto-detects Slack Desktop credentials on macOS, Windows, and Linux — with Chrome, Brave, and Firefox fallbacks
-- Multi-workspace Slack management with automatic workspace resolution
-- Human-in-the-loop message composing via browser-based WYSIWYG rich text editor (`message compose`)
-- Slack-native drafts that appear in the user's Slack client via `message draft` (list/create/update/delete), with file attachments
-- Slack canvas creation and editing from Markdown files or inline content, plus export to Markdown
-- Slack channel creation, user invites, and Slack Connect external invites
+- Read Slack messages, threads and channel history from a message URL, a channel name or a channel ID
+- Search messages and files through Slack's search API, or by scanning given channels (`--channel`), with user, date and content-type filters
+- Download attached files (snippets, images, canvases as Markdown) to absolute local paths
+- Send, schedule, edit and delete messages, upload files with `message send --attach`, post Block Kit with `--blocks`, add and remove reactions
+- Human-in-the-loop: `message compose` opens an editor in the user's browser where a person sends; `message draft` creates Slack-native drafts in the user's Slack client; `--safe-mode` / `SLACKCLI_SAFE_MODE=1` enforces review
+- Inbox and saved items: `unreads`, `later`
+- Channels and users: list conversations, create channels, invite members and Slack Connect guests, mark as read, look up users, open DMs
+- Canvases: create and edit from Markdown, export to Markdown
+- Workflows: list, inspect and run link-trigger workflows
+- Zero-config auth from Slack Desktop on macOS, Linux and Windows, with browser fallbacks; standard `xoxb-`/`xoxp-` tokens via `SLACK_TOKEN`
+- Self-update with checksum verification: `slackcli update`
 
 ## Optional
 
-- [npm Package](https://www.npmjs.com/package/agent-slack): `npm i -g agent-slack`
-- [GitHub Repository](https://github.com/stablyai/agent-slack): Source code, issues, and releases
-- [Contributing Guide](https://github.com/stablyai/agent-slack/blob/main/CONTRIBUTING.md): Development setup and build instructions
-- [Stably AI](https://stably.ai): The team behind agent-slack
+- [GitHub repository](https://github.com/maelvls/slackcli): Source code, issues and releases
+- [Contributing guide](https://github.com/maelvls/slackcli/blob/main/CONTRIBUTING.md): Go toolchain, make targets, adding a command, release process
+- [AGENTS.md](https://github.com/maelvls/slackcli/blob/main/AGENTS.md): Codebase layout and conventions for coding agents
+- [stablyai/agent-slack](https://github.com/stablyai/agent-slack): The TypeScript project slackcli is a Go rewrite of (MIT)

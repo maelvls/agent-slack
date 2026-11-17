@@ -129,7 +129,8 @@ func serve(method string, params map[string]any) map[string]any {
 		if strings.Contains(params["users"].(string), ",") {
 			return map[string]any{"channel": map[string]any{"id": "G000000001"}}
 		}
-		return map[string]any{"channel": map[string]any{"id": "D000000001"}}
+		// The DM with alice exists and is open.
+		return map[string]any{"no_op": true, "already_open": true, "channel": map[string]any{"id": "D000000001"}}
 	}
 	return map[string]any{"ok": false, "error": "unknown_method"}
 }
@@ -241,7 +242,7 @@ func TestDMOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]any{"user_ids": []any{"U000000001"}, "dm_channel_id": "D000000001", "channel_type": "dm"}
+	want := map[string]any{"user_ids": []any{"U000000001"}, "dm_channel_id": "D000000001", "channel_type": "dm", "already_open": true}
 	if !reflect.DeepEqual(out, want) {
 		t.Errorf("printed %s", h.stdout)
 	}
@@ -253,7 +254,7 @@ func TestDMOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want = map[string]any{"user_ids": []any{"U000000001", "U000000003"}, "dm_channel_id": "G000000001", "channel_type": "group_dm"}
+	want = map[string]any{"user_ids": []any{"U000000001", "U000000003"}, "dm_channel_id": "G000000001", "channel_type": "group_dm", "already_open": false}
 	if !reflect.DeepEqual(out, want) {
 		t.Errorf("group: printed %s", h.stdout)
 	}
@@ -290,7 +291,7 @@ func TestHelp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"One to 8 other user", "caller is implicit"} {
+	for _, want := range []string{"One to 8 other user", "caller is implicit", "already_open"} {
 		if !strings.Contains(dmOpen.Long, want) {
 			t.Errorf("dm-open help does not mention %q", want)
 		}

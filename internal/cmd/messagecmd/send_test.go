@@ -486,13 +486,3 @@ func TestSendAppURLUsesDefaultWorkspace(t *testing.T) {
 		t.Errorf("permalink = %v, want it in the default workspace", got["permalink"])
 	}
 }
-
-func TestNormalizeAttachPaths(t *testing.T) {
-	got := normalizeAttachPaths([]string{" a.txt ", "", "b.txt", "a.txt", "  "})
-	if want := []string{"a.txt", "b.txt"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
-	if got := normalizeAttachPaths(nil); got != nil {
-		t.Errorf("got %v, want nil", got)
-	}
-}

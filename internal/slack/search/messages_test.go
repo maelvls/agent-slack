@@ -445,6 +445,10 @@ func TestScanRejectsWhatItCannotEvaluate(t *testing.T) {
 		t.Fatalf("err = %v, want the operator refused with the alternative", err)
 	}
 
+	// The user is in neither the search index nor the directory.
+	f.on("search.messages", func(map[string]any) (map[string]any, error) {
+		return map[string]any{"messages": map[string]any{"matches": []any{}}}, nil
+	})
 	f.on("users.list", func(map[string]any) (map[string]any, error) { return map[string]any{"members": []any{}}, nil })
 	opts = options(t, KindMessages, "deploy")
 	opts.Channels, opts.User = []string{general}, "nobody"

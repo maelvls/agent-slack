@@ -352,6 +352,8 @@ func TestBadArgumentsAreRejectedBeforeCallingSlack(t *testing.T) {
 		{"invalid workflow trigger", []string{"preview", "nope"}},
 		{"the workflow ID is empty", []string{"get", " "}},
 		{"the channel is empty", []string{"list", "#"}},
+		{`"U12345678" is not a channel`, []string{"list", "U12345678"}},
+		{`--channel: "U12345678" is not a channel`, []string{"run", "Ft0123ABCDEF", "--channel", "U12345678"}},
 		{"accepts 1 arg(s)", []string{"list"}},
 		{"accepts 1 arg(s)", []string{"run", "--channel", "C12345678"}},
 	} {

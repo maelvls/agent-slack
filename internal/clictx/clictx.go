@@ -74,7 +74,8 @@ func (c *Context) Hintf(format string, args ...any) {
 
 // SafeMode reports whether safe mode is on (--safe-mode or
 // SLACKCLI_SAFE_MODE): nothing may be posted, edited or deleted without a
-// human reviewing it.
+// human reviewing it. See SafeModeSummary for what it covers, and
+// CheckSafeMode to refuse a command.
 func (c *Context) SafeMode() bool { return c.SafeModeFlag || appinfo.EnvBool("SAFE_MODE") }
 
 // EffectiveWorkspace returns the workspace selector to use: the --workspace

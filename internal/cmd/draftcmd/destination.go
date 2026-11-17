@@ -1,15 +1,12 @@
 package draftcmd
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"strings"
 
-	"github.com/maelvls/slackcli/internal/clictx"
-	"github.com/maelvls/slackcli/internal/slack/channels"
-	"github.com/maelvls/slackcli/internal/slack/messages"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/slackurl"
 	"github.com/maelvls/slackcli/internal/slackapi"
 	"github.com/maelvls/slackcli/internal/slackid"
@@ -30,43 +27,11 @@ func errBroadcastNeedsThread(how string) error {
 // isDM reports whether a conversation ID is a 1:1 DM.
 func isDM(channelID string) bool { return strings.HasPrefix(channelID, "D") }
 
-func validateThreadTS(ts string) error {
-	if ts != "" && !slackurl.IsTS(ts) {
-		return fmt.Errorf("invalid --thread-ts %q: expected a Slack message ts such as 1770165109.628379", ts)
-	}
-	return nil
-}
-
-// targetWorkspace returns the workspace selector for a target: the
-// workspace its URL names, else --workspace / SLACK_WORKSPACE_URL / the
-// default. Channel names need to know which workspace they are in.
-func targetWorkspace(rt *clictx.Context, target slackurl.Target, flag string) (string, error) {
-	if target.WorkspaceURL != "" {
-		return target.WorkspaceURL, nil
-	}
-	workspace := rt.EffectiveWorkspace(flag)
-	if target.Kind == slackurl.TargetChannel {
-		if err := rt.AssertWorkspaceForChannelNames(workspace, target.Channel); err != nil {
-			return "", err
-		}
-	}
-	return workspace, nil
-}
-
-func hintTruncatedURL(rt *clictx.Context, target slackurl.Target) {
-	if target.Kind != slackurl.TargetURL {
-		return
-	}
-	if hint := slackurl.TruncatedURLHint(target.Ref); hint != "" {
-		rt.Hintf("%s", hint)
-	}
-}
-
 // checkBroadcastStatically rejects the --broadcast combinations that are
 // invalid whatever Slack answers: a DM target, or a channel target without
 // --thread-ts. A message URL into a channel gets its thread from the
 // message, so it is checked after resolution (checkBroadcast).
-func checkBroadcastStatically(target slackurl.Target, threadTS string) error {
+func checkBroadcastStatically(target cmdutil.Target, threadTS string) error {
 	switch target.Kind {
 	case slackurl.TargetUser:
 		return errBroadcastDM
@@ -99,27 +64,15 @@ func checkBroadcast(dest destination, how string) error {
 // resolveDestination turns a target into a channel and thread. A message
 // URL drafts a reply in that message's thread, like `message send`; a user
 // ID drafts a DM. threadTS (--thread-ts) wins over the URL's thread.
-func resolveDestination(ctx context.Context, client *slackapi.Client, target slackurl.Target, threadTS string) (destination, error) {
-	switch target.Kind {
-	case slackurl.TargetURL:
-		if threadTS == "" {
-			msg, err := messages.FetchMessage(ctx, client, target.Ref, false)
-			if err != nil {
-				return destination{}, err
-			}
-			threadTS = cmp.Or(msg.ThreadTS, msg.TS)
-		}
-		return destination{channelID: target.Ref.ChannelID, threadTS: threadTS}, nil
-	case slackurl.TargetUser:
-		channelID, err := channels.OpenDM(ctx, client, target.UserID)
-		if err != nil {
-			return destination{}, err
-		}
-		return destination{channelID: channelID, threadTS: threadTS}, nil
-	}
-	channelID, err := channels.ResolveID(ctx, client, target.Channel)
+func resolveDestination(ctx context.Context, client *slackapi.Client, target cmdutil.Target, threadTS string) (destination, error) {
+	channelID, err := target.ConversationID(ctx, client)
 	if err != nil {
 		return destination{}, err
+	}
+	if threadTS == "" {
+		if threadTS, err = target.ReplyThreadTS(ctx, client); err != nil {
+			return destination{}, err
+		}
 	}
 	return destination{channelID: channelID, threadTS: threadTS}, nil
 }

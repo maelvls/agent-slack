@@ -49,7 +49,9 @@ type Options struct {
 	// CountsOnly skips fetching the unread messages.
 	CountsOnly bool
 	// MaxMessages is the number of unread messages fetched per
-	// conversation (the newest ones); 0 means DefaultMaxMessages.
+	// conversation, system messages included; 0 means DefaultMaxMessages.
+	// When there are more, Slack answers the oldest ones (those right
+	// after the read cursor).
 	MaxMessages int
 	// MaxBodyChars truncates message content to that many characters; 0
 	// means DefaultMaxBodyChars, a negative value means no limit.
@@ -80,15 +82,25 @@ type Channel struct {
 	ChannelName string `json:"channel_name,omitempty"`
 	// ChannelType is TypeChannel (public or private), TypeDM or TypeMPIM.
 	ChannelType string `json:"channel_type"`
-	// UnreadCount is Slack's count when it gives one, else the number of
-	// unread messages fetched: a lower bound when MessagesTruncated. It is
-	// nil when unknown (Slack gave no count and no messages were fetched).
-	UnreadCount  *int `json:"unread_count,omitempty"`
-	MentionCount int  `json:"mention_count"`
-	// Messages are the unread messages, oldest first.
+	// UnreadCount is the number of unread messages, hidden system
+	// messages included: Slack's count when it gives one (client.counts
+	// usually only says "has unreads"), else the number of unread messages
+	// fetched. It is nil when unknown (no count from Slack, and no message
+	// fetched), and never 0: every Channel has unreads.
+	UnreadCount *int `json:"unread_count,omitempty"`
+	// UnreadCountIsLowerBound is true when UnreadCount only counts the
+	// messages fetched and Slack has more.
+	UnreadCountIsLowerBound bool `json:"unread_count_is_lower_bound,omitempty"`
+	MentionCount            int  `json:"mention_count"`
+	// Messages are the unread messages fetched, oldest first, without the
+	// system messages unless Options.IncludeSystem.
 	Messages []Message `json:"messages,omitempty"`
-	// MessagesTruncated is true when there are more unread messages than
-	// were fetched: Messages then holds the newest ones.
+	// SystemMessagesHidden is the number of fetched unread messages left
+	// out of Messages for being system messages (joins, leaves, topic
+	// changes …).
+	SystemMessagesHidden int `json:"system_messages_hidden,omitempty"`
+	// MessagesTruncated is true when Slack has more unread messages than
+	// the Options.MaxMessages that were fetched.
 	MessagesTruncated bool `json:"messages_truncated,omitempty"`
 	// MessagesError is Slack's error code when the unread messages could
 	// not be fetched.
@@ -157,7 +169,8 @@ func Fetch(ctx context.Context, client *slackapi.Client, opts Options) (Result, 
 			e := entry{id: id, kind: group.kind, lastRead: jsonx.Str(raw["last_read"])}
 			e.mentions, _ = jsonx.Int(raw["mention_count"])
 			for _, key := range []string{"unread_count_display", "unread_count"} {
-				if n, ok := jsonx.Int(raw[key]); ok {
+				// A count of 0 next to has_unreads says nothing.
+				if n, ok := jsonx.Int(raw[key]); ok && n > 0 {
 					e.count = &n
 					break
 				}
@@ -243,8 +256,10 @@ func errorCode(err error) string {
 // fetchMessages fills ch with the messages newer than the read cursor.
 func fetchMessages(ctx context.Context, client *slackapi.Client, e entry, opts Options, ch *Channel) error {
 	params := map[string]any{"channel": e.id, "limit": opts.MaxMessages, "inclusive": false}
-	// Without a read cursor (a conversation never opened) everything is
-	// unread: the newest messages are fetched.
+	// With "oldest" and no "latest", conversations.history pages forward
+	// from the read cursor: a truncated page holds the oldest unread
+	// messages. Without a read cursor (a conversation never opened)
+	// everything is unread, and the newest messages are fetched.
 	if e.lastRead != "" {
 		params["oldest"] = e.lastRead
 	}
@@ -252,10 +267,12 @@ func fetchMessages(ctx context.Context, client *slackapi.Client, e entry, opts O
 	if err != nil {
 		return err
 	}
+	fetched := jsonx.Maps(history["messages"])
 	ch.MessagesTruncated = jsonx.Bool(history["has_more"])
 	ch.Messages = []Message{}
-	for _, m := range jsonx.Maps(history["messages"]) {
+	for _, m := range fetched {
 		if !opts.IncludeSystem && slices.Contains(systemSubtypes, jsonx.Str(m["subtype"])) {
+			ch.SystemMessagesHidden++
 			continue
 		}
 		msg := Message{
@@ -270,9 +287,13 @@ func fetchMessages(ctx context.Context, client *slackapi.Client, e entry, opts O
 		ch.Messages = append(ch.Messages, msg)
 	}
 	slices.SortStableFunc(ch.Messages, func(a, b Message) int { return messages.CompareTS(a.TS, b.TS) })
-	if ch.UnreadCount == nil {
-		n := len(ch.Messages)
+	// What was fetched is the only count there is, unless Slack gave a
+	// (larger) one. Hidden system messages count: they are what makes the
+	// conversation unread. Nothing fetched (unread thread replies only,
+	// deleted messages …) leaves the count unknown rather than 0.
+	if n := len(fetched); n > 0 && (ch.UnreadCount == nil || *ch.UnreadCount < n) {
 		ch.UnreadCount = &n
+		ch.UnreadCountIsLowerBound = ch.MessagesTruncated
 	}
 	return nil
 }

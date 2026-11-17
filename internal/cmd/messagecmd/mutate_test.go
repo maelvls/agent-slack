@@ -86,7 +86,7 @@ func TestEditValidation(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"channel without ts", []string{testChannel, "hello"}, "you must pass --ts"},
+		{"channel without ts", []string{testChannel, "hello"}, "--ts is required"},
 		{"garbage ts", []string{testChannel, "hello", "--ts", "1"}, "invalid --ts"},
 		{"empty text", []string{testURL, ""}, "<text> is empty"},
 		{"missing text", []string{testURL}, "accepts 2 arg"},
@@ -138,7 +138,7 @@ func TestDelete(t *testing.T) {
 		t.Errorf("chat.delete calls = %v", got)
 	}
 
-	h.mustFail("you must pass --ts", "delete", testChannel)
+	h.mustFail("--ts is required", "delete", testChannel)
 	h.mustFail("invalid --ts", "delete", testChannel, "--ts", "nope")
 	h.mustFail("does not support user ID targets", "delete", "U05BRPTKL6A")
 	h.wantCalls()
@@ -170,7 +170,7 @@ func TestReactValidation(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"react", "add", testChannel, "eyes"}, "you must pass --ts"},
+		{[]string{"react", "add", testChannel, "eyes"}, "--ts is required"},
 		{[]string{"react", "add", testChannel, "eyes", "--ts", "x"}, "invalid --ts"},
 		{[]string{"react", "add", "U05BRPTKL6A", "eyes"}, "does not support user ID targets"},
 		{[]string{"react", "add", testURL, "not an emoji"}, "unsupported emoji"},
@@ -222,25 +222,4 @@ func TestTextStartingWithDash(t *testing.T) {
 	h.mustFail("unknown flag: --not-a-flag", "send", testChannel, "--not-a-flag")
 	h.mustFail("unknown shorthand flag", "send", testChannel, "-x")
 	h.mustFail("flag needs an argument: --thread-ts", "send", testChannel, "hi", "--thread-ts")
-}
-
-func TestIsDashText(t *testing.T) {
-	for arg, want := range map[string]bool{
-		"- item":                   true,
-		"- one\n- two":             true,
-		"-- note":                  true,
-		"-\tindented":              true,
-		"-> see a=b":               true,
-		"-":                        false,
-		"--":                       false,
-		"-x":                       false,
-		"--thread-ts":              false,
-		"--blocks=/path with/b.js": false,
-		"plain - text":             false,
-		"":                         false,
-	} {
-		if got := isDashText(arg); got != want {
-			t.Errorf("isDashText(%q) = %v, want %v", arg, got, want)
-		}
-	}
 }

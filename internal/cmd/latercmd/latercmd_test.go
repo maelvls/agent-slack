@@ -307,6 +307,14 @@ func TestActionOnChannelTarget(t *testing.T) {
 	if len(h.calls) != 1 || h.calls[0].params["item_id"] != "C12345678" {
 		t.Errorf("calls = %+v", h.calls)
 	}
+
+	// Flags that only repeat what the URL says are harmless.
+	if _, err := h.run("complete", messageURL, "--ts", "1700000000.000100", "--workspace", "acme"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.calls) != 1 || h.calls[0].params["item_id"] != "C12345678" || h.calls[0].params["ts"] != "1700000000.000100" {
+		t.Errorf("calls = %+v", h.calls)
+	}
 }
 
 func TestActionTargetErrors(t *testing.T) {
@@ -321,10 +329,10 @@ func TestActionTargetErrors(t *testing.T) {
 		{"garbage --ts", []string{"complete", "C12345678", "--ts", "yesterday"}, "invalid --ts"},
 		{"truncated --ts", []string{"complete", "C12345678", "--ts", "1700000000"}, "invalid --ts"},
 		// The TypeScript silently ignored these two flags with a URL.
-		{"URL and --ts", []string{"complete", messageURL, "--ts", "1700000000.000200"}, "--ts cannot be used with a message URL"},
-		{"URL and --workspace", []string{"complete", messageURL, "--workspace", "other"}, "--workspace cannot be used with a URL target"},
+		{"URL and another --ts", []string{"complete", messageURL, "--ts", "1700000000.000200"}, "--ts 1700000000.000200 contradicts the message URL"},
+		{"URL and another --workspace", []string{"complete", messageURL, "--workspace", "other"}, `--workspace "other" contradicts the URL`},
 		// The TypeScript looked for a channel named after the user ID.
-		{"user target", []string{"complete", "U12345678", "--ts", "1700000000.000100"}, "user targets are not supported"},
+		{"user target", []string{"complete", "U12345678", "--ts", "1700000000.000100"}, "does not support user ID targets"},
 		{"channel URL", []string{"complete", "https://acme.slack.com/archives/C12345678"}, "--ts is required"},
 		{"not a Slack URL", []string{"complete", "https://example.com/archives/C12345678/p1700000000000100"}, "unsupported target URL"},
 		{"another workspace's URL", []string{"complete", "https://other.slack.com/archives/C12345678/p1700000000000100"}, `no Slack credentials for workspace "https://other.slack.com"`},

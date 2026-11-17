@@ -23,17 +23,34 @@ func New(rt *clictx.Context) *cobra.Command {
 		Long: `Show every conversation with unread messages, with the unread messages.
 
 Prints JSON:
-  channels  conversations with unreads, most mentions first, each with
-            channel_id, channel_name, channel_type (channel, dm or mpim),
-            mention_count, unread_count and messages (oldest first: ts,
-            author, content as Markdown, thread_ts, reply_count).
-            unread_count is the number of unread messages fetched, system
-            messages excluded; it is a lower bound when
-            messages_truncated is true (more unread messages than
-            --max-messages: the newest are shown), and absent with
-            --counts-only, since Slack only says that there are unreads.
-            messages_error is set when the messages of a conversation
-            could not be read.
+  channels  conversations with unreads, most mentions first, each with:
+    channel_id, channel_name
+    channel_type                 channel, dm or mpim
+    unread_count                 number of unread messages, hidden system
+                                 messages included. Slack only says that a
+                                 conversation has unreads, so this counts
+                                 the messages fetched: it is never 0, and
+                                 it is absent when unknown (--counts-only,
+                                 messages_error, or nothing but unread
+                                 thread replies).
+    unread_count_is_lower_bound  true when there are more unread messages
+                                 than unread_count (see messages_truncated)
+    mention_count                unread mentions of you, from Slack
+    messages                     the unread messages fetched, oldest first:
+                                 ts, author {user_id, bot_id}, content (as
+                                 Markdown), thread_ts, reply_count
+    system_messages_hidden       number of fetched unread messages left out
+                                 of messages because they are system
+                                 messages (joins, leaves, topic changes …).
+                                 A conversation can be unread with nothing
+                                 but these: pass --include-system to see
+                                 them.
+    messages_truncated           true when the conversation has more unread
+                                 messages than the --max-messages fetched.
+                                 The oldest unread ones were fetched; raise
+                                 --max-messages to get the rest.
+    messages_error               Slack's error code when the messages of
+                                 the conversation could not be read
   threads   {has_unreads, mention_count}, present when threads have unread
             replies (the replies themselves are not listed).
 
@@ -70,8 +87,8 @@ a bot or user token.`,
 	}
 	clictx.AddWorkspaceFlag(cmd, &workspace)
 	cmd.Flags().BoolVar(&countsOnly, "counts-only", false, "Only list the conversations with unreads and their mention counts; do not fetch message content")
-	cmd.Flags().IntVar(&maxMessages, "max-messages", unreads.DefaultMaxMessages, fmt.Sprintf("Max unread messages to fetch per conversation, newest first (1-%d)", unreads.MaxMessagesLimit))
+	cmd.Flags().IntVar(&maxMessages, "max-messages", unreads.DefaultMaxMessages, fmt.Sprintf("Max unread messages to fetch per conversation, oldest unread first, hidden system messages included (1-%d)", unreads.MaxMessagesLimit))
 	cmd.Flags().IntVar(&maxBodyChars, "max-body-chars", unreads.DefaultMaxBodyChars, "Max content characters per message (-1 for unlimited)")
-	cmd.Flags().BoolVar(&includeSystem, "include-system", false, "Include system messages (joins, leaves, topic changes, etc.)")
+	cmd.Flags().BoolVar(&includeSystem, "include-system", false, "Include system messages (joins, leaves, topic changes, etc.) in messages instead of only counting them in system_messages_hidden")
 	return cmd
 }

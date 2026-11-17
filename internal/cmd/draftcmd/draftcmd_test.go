@@ -293,6 +293,41 @@ func TestCreateForChannelID(t *testing.T) {
 	wantJSON(t, out, `{"ok": true, "draft": {"id": "DrNew", "destinations": [{"channel_id": "C11111111"}]}}`)
 }
 
+// Text that starts with a dash (a list) is text, not a flag.
+func TestTextStartingWithADash(t *testing.T) {
+	const list = "- one\n- two"
+	blocks := func(c call) string {
+		b, err := json.Marshal(c.params["blocks"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+
+	h := newHarness(t)
+	h.mustRun("create", "C11111111", list, "--workspace", workspaceURL)
+	if got := blocks(h.only("drafts.create")); !strings.Contains(got, "one") || !strings.Contains(got, "two") {
+		t.Errorf("create blocks = %s", got)
+	}
+
+	h = newHarness(t)
+	h.drafts = []any{draft(nil)}
+	h.mustRun("update", "--workspace", workspaceURL, "Dr123", list)
+	if got := blocks(h.only("drafts.update")); !strings.Contains(got, "one") || !strings.Contains(got, "two") {
+		t.Errorf("update blocks = %s", got)
+	}
+
+	// "--" still works, and flag mistakes are still reported.
+	h = newHarness(t)
+	h.mustRun("create", "--", "C11111111", "--not-a-flag")
+	if got := blocks(h.only("drafts.create")); !strings.Contains(got, "--not-a-flag") {
+		t.Errorf("create blocks = %s", got)
+	}
+	h.mustFail("unknown flag: --not-a-flag", "create", "C11111111", "--not-a-flag")
+	h.mustFail("accepts 2 arg(s), received 1", "create", "C11111111")
+	h.mustFail("accepts 2 arg(s), received 1", "update", "Dr123")
+}
+
 func TestCreateForUserOpensDM(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("create", "U12345678", "hello", "--thread-ts", threadTS)

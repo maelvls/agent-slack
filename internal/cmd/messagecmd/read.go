@@ -5,11 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/maelvls/slackcli/internal/appinfo"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/messages"
 	"github.com/maelvls/slackcli/internal/slack/slacktext"
 	"github.com/maelvls/slackcli/internal/slack/slackurl"
@@ -54,7 +57,7 @@ type listResult struct {
 
 func addReadFlags(cmd *cobra.Command, o *readOptions) {
 	f := cmd.Flags()
-	f.StringVar(&o.workspace, "workspace", "", workspaceUsage)
+	f.StringVar(&o.workspace, "workspace", "", cmdutil.TargetWorkspaceUsage)
 	f.IntVar(&o.maxBodyChars, "max-body-chars", messages.DefaultMaxBodyChars, "Max characters of each message's content to include; longer content is cut (-1 for unlimited)")
 	f.BoolVar(&o.includeReactions, "include-reactions", false, "Include reactions and the IDs of the users who reacted")
 	f.BoolVar(&o.resolveUsers, "resolve-users", false, `Add "referenced_users": the profiles of the user IDs appearing in the output (cached for 24h)`)
@@ -63,7 +66,7 @@ func addReadFlags(cmd *cobra.Command, o *readOptions) {
 
 func addGetFlags(cmd *cobra.Command, o *readOptions) {
 	addReadFlags(cmd, o)
-	cmd.Flags().StringVar(&o.ts, "ts", "", tsUsage)
+	cmd.Flags().StringVar(&o.ts, "ts", "", cmdutil.MessageTSUsage)
 	cmd.Flags().StringVar(&o.threadTS, "thread-ts", "", "Thread root ts: where to look when the message is a thread reply (a permalink's ?thread_ts= already says so)")
 }
 
@@ -90,41 +93,25 @@ that cannot be downloaded is listed with an "error" instead.`,
 	return cmd
 }
 
-// compactMaxBodyChars maps --max-body-chars onto
-// messages.CompactOptions.MaxBodyChars, where 0 means "default": 0 is
-// refused rather than silently turned into 8000.
-func compactMaxBodyChars(n int) (int, error) {
-	if n == 0 || n < -1 {
-		return 0, fmt.Errorf("invalid --max-body-chars value %d: must be a positive integer, or -1 for unlimited", n)
-	}
-	return n, nil
-}
-
 func (c *command) runGet(cmd *cobra.Command, targetInput string, opts readOptions) error {
 	ctx := cmd.Context()
-	target, err := slackurl.ParseTarget(targetInput)
+	// "message <target>" is "message get <target>".
+	target, ts, err := cmdutil.ParseMessageTarget(c.rt, appinfo.Name+" message get", targetInput, opts.workspace, opts.ts)
 	if err != nil {
 		return err
 	}
-	if err := noUserTarget(target, `"message get"`); err != nil {
-		return err
-	}
-	ts, err := messageTS(target, opts.ts)
+	threadTS, err := cmdutil.ParseTS("--thread-ts", opts.threadTS)
 	if err != nil {
 		return err
 	}
-	threadTS, err := parseTS("--thread-ts", opts.threadTS)
-	if err != nil {
-		return err
-	}
-	maxBodyChars, err := compactMaxBodyChars(opts.maxBodyChars)
-	if err != nil {
+	// 0 would mean "the default" to messages.CompactOptions.
+	if err := cmdutil.CheckMaxChars("--max-body-chars", opts.maxBodyChars); err != nil {
 		return err
 	}
 
-	result, err := withTarget(ctx, c, target, opts.workspace, func(loc located) (getResult, error) {
+	result, err := cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (getResult, error) {
 		ref := target.Ref // zero unless the target is a message URL
-		ref.WorkspaceURL, ref.ChannelID, ref.MessageTS, ref.Raw = loc.WorkspaceURL, loc.channelID, ts, targetInput
+		ref.WorkspaceURL, ref.ChannelID, ref.MessageTS, ref.Raw = loc.WorkspaceURL, loc.ChannelID, ts, targetInput
 		if ref.ThreadTSHint == "" {
 			ref.ThreadTSHint = threadTS
 		}
@@ -132,12 +119,12 @@ func (c *command) runGet(cmd *cobra.Command, targetInput string, opts readOption
 		if err != nil {
 			return getResult{}, err
 		}
-		thread, err := getThreadSummary(ctx, loc.Client, loc.channelID, msg)
+		thread, err := getThreadSummary(ctx, loc.Client, loc.ChannelID, msg)
 		if err != nil {
 			return getResult{}, err
 		}
 		msgs := []messages.Message{msg}
-		compact, referenced, err := c.present(ctx, loc, msgs, opts, maxBodyChars)
+		compact, referenced, err := c.present(ctx, loc, msgs, opts)
 		if err != nil {
 			return getResult{}, err
 		}
@@ -151,7 +138,7 @@ func (c *command) runGet(cmd *cobra.Command, targetInput string, opts readOption
 
 // present downloads the files of msgs, converts them to the printed shape
 // and resolves the users they reference when asked to.
-func (c *command) present(ctx context.Context, loc located, msgs []messages.Message, opts readOptions, maxBodyChars int) ([]messages.CompactMessage, map[string]users.CompactUser, error) {
+func (c *command) present(ctx context.Context, loc cmdutil.Located, msgs []messages.Message, opts readOptions) ([]messages.CompactMessage, map[string]users.CompactUser, error) {
 	downloads, err := c.downloadMessageFiles(ctx, loc.Client, msgs)
 	if err != nil {
 		return nil, nil, err
@@ -159,7 +146,7 @@ func (c *command) present(ctx context.Context, loc located, msgs []messages.Mess
 	compact := make([]messages.CompactMessage, len(msgs))
 	for i, m := range msgs {
 		compact[i] = messages.ToCompact(m, messages.CompactOptions{
-			MaxBodyChars:     maxBodyChars,
+			MaxBodyChars:     opts.maxBodyChars,
 			IncludeReactions: opts.includeReactions,
 			Downloads:        downloads,
 		})
@@ -216,16 +203,6 @@ pass the ts of the oldest message received as --latest.`, messages.MaxHistoryLim
 // historyOnlyFlags only make sense when listing a channel's history.
 var historyOnlyFlags = []string{"limit", "oldest", "latest", "with-reaction", "without-reaction"}
 
-// checkLimit validates --limit. Values above the maximum are refused
-// rather than clamped, so that the caller knows the result is not all it
-// asked for.
-func checkLimit(n int) error {
-	if n < 1 || n > messages.MaxHistoryLimit {
-		return fmt.Errorf("invalid --limit value %d: must be an integer between 1 and %d (page further back with --latest)", n, messages.MaxHistoryLimit)
-	}
-	return nil
-}
-
 // parseReactionFilters normalises repeatable reaction flags to bare
 // reaction names, without duplicates.
 func parseReactionFilters(flag string, raw []string) ([]string, error) {
@@ -254,18 +231,17 @@ func requireOldestForReactionFilters(oldest string, hasFilters bool) error {
 
 func (c *command) runList(cmd *cobra.Command, targetInput string, opts listOptions) error {
 	ctx := cmd.Context()
-	target, err := slackurl.ParseTarget(targetInput)
+	target, err := cmdutil.ParseTarget(c.rt, targetInput, opts.workspace)
 	if err != nil {
 		return err
 	}
-	if err := noUserTarget(target, `"message list"`); err != nil {
+	if err := target.NoUser(cmd.CommandPath()); err != nil {
 		return err
 	}
-	maxBodyChars, err := compactMaxBodyChars(opts.maxBodyChars)
-	if err != nil {
+	if err := cmdutil.CheckMaxChars("--max-body-chars", opts.maxBodyChars); err != nil {
 		return err
 	}
-	threadTS, err := parseTS("--thread-ts", opts.threadTS)
+	threadTS, err := cmdutil.ParseTS("--thread-ts", opts.threadTS)
 	if err != nil {
 		return err
 	}
@@ -274,14 +250,14 @@ func (c *command) runList(cmd *cobra.Command, targetInput string, opts listOptio
 	// the message itself need not be fetched first.
 	rootTS := threadTS
 	if target.Kind == slackurl.TargetURL {
-		if _, err := messageTS(target, opts.ts); err != nil {
+		if _, err := target.MessageTS(opts.ts); err != nil {
 			return err
 		}
 		if rootTS == "" {
 			rootTS = cmp.Or(target.Ref.ThreadTSHint, target.Ref.MessageTS)
 		}
 	} else if rootTS == "" {
-		if rootTS, err = parseTS("--ts", opts.ts); err != nil {
+		if rootTS, err = cmdutil.ParseTS("--ts", opts.ts); err != nil {
 			return err
 		}
 	}
@@ -292,21 +268,21 @@ func (c *command) runList(cmd *cobra.Command, targetInput string, opts listOptio
 				return fmt.Errorf("--%s only applies to channel history, but this lists a thread (message URL, --ts or --thread-ts): drop --%[1]s, or pass only the channel", name)
 			}
 		}
-		return c.listThread(ctx, target, rootTS, opts.readOptions, maxBodyChars)
+		return c.listThread(ctx, target, rootTS, opts.readOptions)
 	}
-	return c.listHistory(ctx, target, opts, maxBodyChars)
+	return c.listHistory(ctx, target, opts)
 }
 
-func (c *command) listThread(ctx context.Context, target slackurl.Target, rootTS string, opts readOptions, maxBodyChars int) error {
-	result, err := withTarget(ctx, c, target, opts.workspace, func(loc located) (listResult, error) {
-		msgs, err := messages.FetchThread(ctx, loc.Client, loc.channelID, rootTS, opts.includeReactions)
+func (c *command) listThread(ctx context.Context, target cmdutil.Target, rootTS string, opts readOptions) error {
+	result, err := cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (listResult, error) {
+		msgs, err := messages.FetchThread(ctx, loc.Client, loc.ChannelID, rootTS, opts.includeReactions)
 		if slackapi.IsErrorCode(err, "thread_not_found") {
-			return listResult{}, fmt.Errorf("no message with ts %s in channel %s: it may have been deleted, or the ts or URL is wrong or truncated (quote URLs containing \"&\"): %w", rootTS, loc.channelID, err)
+			return listResult{}, fmt.Errorf("no message with ts %s in channel %s: it may have been deleted, or the ts or URL is wrong or truncated (quote URLs containing \"&\"): %w", rootTS, loc.ChannelID, err)
 		}
 		if err != nil {
 			return listResult{}, err
 		}
-		compact, referenced, err := c.present(ctx, loc, msgs, opts, maxBodyChars)
+		compact, referenced, err := c.present(ctx, loc, msgs, opts)
 		if err != nil {
 			return listResult{}, err
 		}
@@ -322,8 +298,8 @@ func (c *command) listThread(ctx context.Context, target slackurl.Target, rootTS
 	return c.rt.Print(result)
 }
 
-func (c *command) listHistory(ctx context.Context, target slackurl.Target, opts listOptions, maxBodyChars int) error {
-	if err := checkLimit(opts.limit); err != nil {
+func (c *command) listHistory(ctx context.Context, target cmdutil.Target, opts listOptions) error {
+	if err := cmdutil.CheckLimit(opts.limit, messages.MaxHistoryLimit, "page further back with --latest"); err != nil {
 		return err
 	}
 	oldest, err := parseHistoryBound("--oldest", opts.oldest)
@@ -351,8 +327,8 @@ func (c *command) listHistory(ctx context.Context, target slackurl.Target, opts 
 		return err
 	}
 
-	result, err := withTarget(ctx, c, target, opts.workspace, func(loc located) (listResult, error) {
-		msgs, err := messages.FetchChannelHistory(ctx, loc.Client, loc.channelID, messages.HistoryOptions{
+	result, err := cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (listResult, error) {
+		msgs, err := messages.FetchChannelHistory(ctx, loc.Client, loc.ChannelID, messages.HistoryOptions{
 			Limit:            opts.limit,
 			Latest:           latest,
 			Oldest:           oldest,
@@ -363,11 +339,11 @@ func (c *command) listHistory(ctx context.Context, target slackurl.Target, opts 
 		if err != nil {
 			return listResult{}, err
 		}
-		compact, referenced, err := c.present(ctx, loc, msgs, opts.readOptions, maxBodyChars)
+		compact, referenced, err := c.present(ctx, loc, msgs, opts.readOptions)
 		if err != nil {
 			return listResult{}, err
 		}
-		return listResult{ChannelID: loc.channelID, Messages: compact, ReferencedUsers: referenced}, nil
+		return listResult{ChannelID: loc.ChannelID, Messages: compact, ReferencedUsers: referenced}, nil
 	})
 	if err != nil {
 		return err
@@ -376,6 +352,18 @@ func (c *command) listHistory(ctx context.Context, target slackurl.Target, opts 
 		c.rt.Hintf("No messages matched in %s.", describeRange(oldest, latest))
 	}
 	return c.rt.Print(result)
+}
+
+var historyBoundRe = regexp.MustCompile(`^\d+(\.\d+)?$`)
+
+// parseHistoryBound validates --oldest / --latest: a message ts or a Unix
+// time in seconds.
+func parseHistoryBound(flag, raw string) (string, error) {
+	v := strings.TrimSpace(raw)
+	if v != "" && !historyBoundRe.MatchString(v) {
+		return "", fmt.Errorf("invalid %s value %q: expected a Slack ts (1770165109.628379) or a Unix time in seconds", flag, raw)
+	}
+	return v, nil
 }
 
 // describeRange words the --oldest/--latest window for the "no messages"

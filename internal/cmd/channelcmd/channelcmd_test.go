@@ -173,11 +173,12 @@ func TestListUser(t *testing.T) {
 		t.Errorf("--user <id>: calls = %+v", h.calls)
 	}
 
-	// A handle is resolved through the directory first.
+	// A handle is resolved first: one search for a message the user posted,
+	// then (nothing found) the directory.
 	if _, err := h.run("list", "--user", "@alice"); err != nil {
 		t.Fatal(err)
 	}
-	if got := h.methods(); !reflect.DeepEqual(got, []string{"users.list", "users.conversations"}) || h.calls[1].params["user"] != "U000000123" {
+	if got := h.methods(); !reflect.DeepEqual(got, []string{"search.messages", "users.list", "users.conversations"}) || h.calls[2].params["user"] != "U000000123" {
 		t.Errorf("--user @alice: calls = %+v", h.calls)
 	}
 
@@ -334,6 +335,32 @@ func TestInvite(t *testing.T) {
 	}
 }
 
+// TestInviteScansTheDirectoryOnce: each handle used to cost a whole scan
+// of the user directory.
+func TestInviteScansTheDirectoryOnce(t *testing.T) {
+	h := newHarness(t)
+	out, err := h.run("invite", "--channel", "C000000001", "--users", "@ghost,@alice,@nobody,alice")
+	if err == nil || !strings.Contains(err.Error(), "could not resolve 2 of the users: @ghost, @nobody") {
+		t.Errorf("err = %v", err)
+	}
+	want := map[string]any{
+		"channel_id":       "C000000001",
+		"invited_user_ids": []any{"U000000123"},
+		"unresolved_users": []any{"@ghost", "@nobody"},
+	}
+	if !reflect.DeepEqual(out, want) {
+		t.Errorf("printed %s", h.stdout)
+	}
+	if n := len(h.only("users.list")); n != 1 {
+		t.Errorf("users.list calls = %d, want 1 for the four handles", n)
+	}
+	for _, handle := range []string{"@ghost", "@nobody"} {
+		if !strings.Contains(h.stderr.String(), `could not resolve user "`+handle+`"`) {
+			t.Errorf("stderr = %q, want the reason %s is unresolved", h.stderr, handle)
+		}
+	}
+}
+
 func TestInviteReportsPartialFailure(t *testing.T) {
 	h := newHarness(t)
 	h.fail["conversations.invite:U000000002"] = "already_in_channel"
@@ -456,6 +483,7 @@ func TestMark(t *testing.T) {
 	}{
 		{"URL target", []string{"mark", messageURL}, "C12345678", "1234567890.123456"},
 		{"URL target with a --ts override", []string{"mark", messageURL, "--ts", "9999999999.999999"}, "C12345678", "9999999999.999999"},
+		{"URL target with its own --workspace", []string{"mark", messageURL, "--workspace", "acme"}, "C12345678", "1234567890.123456"},
 		{"channel name with --ts", []string{"mark", "#general", "--ts", "1234567890.123456"}, "C000000001", "1234567890.123456"},
 		{"channel ID with --ts and --workspace", []string{"mark", "C12345678", "--ts", "1234567890.123456", "--workspace", "acme"}, "C12345678", "1234567890.123456"},
 		{"channel URL with --ts", []string{"mark", "https://acme.slack.com/archives/C12345678", "--ts", "1234567890.123456"}, "C12345678", "1234567890.123456"},
@@ -485,10 +513,10 @@ func TestMarkErrors(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{"URL target with --workspace", []string{"mark", messageURL, "--workspace", "https://other.slack.com"}, "--workspace cannot be used with a URL target"},
+		{"URL target with --workspace", []string{"mark", messageURL, "--workspace", "https://other.slack.com"}, `--workspace "https://other.slack.com" contradicts the URL`},
 		{"channel without --ts", []string{"mark", "#general"}, "--ts is required"},
 		{"channel URL without --ts", []string{"mark", "https://acme.slack.com/archives/C12345678"}, "--ts is required"},
-		{"user target", []string{"mark", "U12345678", "--ts", "1234567890.123456"}, "user targets are not supported for channel mark"},
+		{"user target", []string{"mark", "U12345678", "--ts", "1234567890.123456"}, `channel mark" does not support user ID targets`},
 		// The TypeScript sent any --ts to Slack as it was.
 		{"garbage --ts", []string{"mark", "#general", "--ts", "now"}, "invalid --ts"},
 		{"garbage --ts override", []string{"mark", messageURL, "--ts", "12abc"}, "invalid --ts"},
@@ -559,7 +587,7 @@ func TestHelp(t *testing.T) {
 	}
 
 	mark := find("mark")
-	contains("mark --workspace", mark("workspace"), "cannot be used with URL targets")
+	contains("mark --workspace", mark("workspace"), "may repeat but not contradict")
 	contains("mark --ts", mark("ts"), "overrides a URL timestamp")
 
 	invite := find("invite")

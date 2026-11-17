@@ -1,9 +1,7 @@
 package later
 
 import (
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/maelvls/slackcli/internal/slack/scheduled"
@@ -24,11 +22,9 @@ func ParseReminderTime(input string, now time.Time, loc *time.Location) (int64, 
 	if loc == nil {
 		loc = time.Local
 	}
-	at, err := scheduled.ParseRelative(input, now, loc)
+	at, err := scheduled.ParseRelative("--in", input, now, loc)
 	if err != nil {
-		// The parser is shared with `message send --schedule-in` and names
-		// that flag in its errors.
-		return 0, errors.New(strings.ReplaceAll(err.Error(), "--schedule-in", "--in"))
+		return 0, err
 	}
 	if at >= 1e11 {
 		return 0, fmt.Errorf("invalid --in value %q: it looks like a Unix timestamp in milliseconds; pass seconds", input)

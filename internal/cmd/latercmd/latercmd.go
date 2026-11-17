@@ -10,7 +10,7 @@ import (
 
 	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/clictx"
-	"github.com/maelvls/slackcli/internal/slack/channels"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/later"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
@@ -91,8 +91,8 @@ Prints JSON:
 			if limit < 1 {
 				return fmt.Errorf("invalid --limit value %d: must be a positive integer", limit)
 			}
-			if maxBodyChars < -1 || maxBodyChars == 0 {
-				return fmt.Errorf("invalid --max-body-chars value %d: must be a positive integer, or -1 for unlimited", maxBodyChars)
+			if err := cmdutil.CheckMaxChars("--max-body-chars", maxBodyChars); err != nil {
+				return err
 			}
 			ctx := cmd.Context()
 			ws := rt.EffectiveWorkspace(workspace)
@@ -141,8 +141,8 @@ type actionResult struct {
 }
 
 func addTargetFlags(cmd *cobra.Command, workspace, ts *string) {
-	cmd.Flags().StringVar(workspace, "workspace", "", "Workspace selector for channel name/ID targets (full URL or unique substring); cannot be used with a URL target that names its workspace")
-	cmd.Flags().StringVar(ts, "ts", "", `Message ts, e.g. 1770165109.628379 (required for channel name/ID targets; cannot be used with a message URL)`)
+	cmdutil.AddTargetWorkspaceFlag(cmd, workspace)
+	cmd.Flags().StringVar(ts, "ts", "", cmdutil.MessageTSUsage)
 }
 
 // newActionCommand builds a sub-command that applies do to one message.
@@ -156,11 +156,11 @@ func newActionCommand(rt *clictx.Context, name, short string, do func(ctx contex
 Prints {"ok": true, "action": "` + name + `", "channel_id": …, "ts": …} on success.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target, err := resolveTarget(rt, args[0], workspace, ts)
+			target, ts, err := cmdutil.ParseMessageTarget(rt, cmd.CommandPath(), args[0], workspace, ts)
 			if err != nil {
 				return err
 			}
-			return runAction(cmd.Context(), rt, target, actionResult{Action: name}, do)
+			return runAction(cmd.Context(), rt, target, ts, actionResult{Action: name}, do)
 		},
 	}
 	addTargetFlags(cmd, &workspace, &ts)
@@ -180,7 +180,7 @@ Prints {"ok": true, "action": "remind", "channel_id": …, "ts": …,
 "remind_at": <Unix seconds>, "remind_at_local": <RFC 3339>} on success.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			target, err := resolveTarget(rt, args[0], workspace, ts)
+			target, ts, err := cmdutil.ParseMessageTarget(rt, cmd.CommandPath(), args[0], workspace, ts)
 			if err != nil {
 				return err
 			}
@@ -196,7 +196,7 @@ Prints {"ok": true, "action": "remind", "channel_id": …, "ts": …,
 				RemindAt:      at,
 				RemindAtLocal: time.Unix(at, 0).In(loc).Format(time.RFC3339),
 			}
-			return runAction(cmd.Context(), rt, target, result,
+			return runAction(cmd.Context(), rt, target, ts, result,
 				func(ctx context.Context, c *slackapi.Client, channelID, ts string) error {
 					return later.SetReminder(ctx, c, channelID, ts, at)
 				})
@@ -208,22 +208,15 @@ Prints {"ok": true, "action": "remind", "channel_id": …, "ts": …,
 	return cmd
 }
 
-// runAction resolves the target's channel, applies do and prints result.
-func runAction(ctx context.Context, rt *clictx.Context, target msgTarget, result actionResult, do func(ctx context.Context, c *slackapi.Client, channelID, ts string) error) error {
-	channelID, err := clictx.WithAutoRefresh(ctx, rt, func() (string, error) {
-		r, err := rt.Client(ctx, target.workspace)
-		if err != nil {
-			return "", err
-		}
-		channelID, err := channels.ResolveID(ctx, r.Client, target.channel)
-		if err != nil {
-			return "", err
-		}
-		return channelID, do(ctx, r.Client, channelID, target.ts)
+// runAction resolves the target's channel, applies do to the message
+// with that ts in it, and prints result.
+func runAction(ctx context.Context, rt *clictx.Context, target cmdutil.Target, ts string, result actionResult, do func(ctx context.Context, c *slackapi.Client, channelID, ts string) error) error {
+	channelID, err := cmdutil.WithTarget(ctx, rt, target, func(loc cmdutil.Located) (string, error) {
+		return loc.ChannelID, do(ctx, loc.Client, loc.ChannelID, ts)
 	})
 	if err != nil {
 		return err
 	}
-	result.OK, result.ChannelID, result.TS = true, channelID, target.ts
+	result.OK, result.ChannelID, result.TS = true, channelID, ts
 	return rt.Print(result)
 }

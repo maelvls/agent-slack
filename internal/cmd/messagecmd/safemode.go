@@ -5,22 +5,15 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"os"
 	"strings"
 
-	"github.com/maelvls/slackcli/internal/appinfo"
+	"github.com/maelvls/slackcli/internal/clictx"
 	"github.com/maelvls/slackcli/internal/cmd/composecmd"
 )
 
 // Safe mode keeps a human in the loop for what an agent writes to Slack:
 // "message send" is redirected to the compose editor, "message edit" and
-// "message delete" are refused. See clictx.Context.SafeMode.
-
-// safeModeBlockedError is returned by "edit" and "delete" in safe mode.
-func safeModeBlockedError(action string) error {
-	return fmt.Errorf(`safe mode is active (%[1]s or --safe-mode): "message %[2]s" is blocked so an agent cannot %[2]s messages without human review. Disable safe mode to %[2]s messages`,
-		appinfo.EnvName("SAFE_MODE"), action)
-}
+// "message delete" are refused (clictx.Context.CheckSafeMode).
 
 // redirectFlags says which of the send flags that carry a value were
 // given (an explicitly empty value counts).
@@ -51,7 +44,7 @@ func (c *command) redirectSendToCompose(ctx context.Context, targetInput, text s
 	if len(unsupported) > 0 {
 		return nil, fmt.Errorf(`safe mode is active: "message send" is redirected to the compose editor, which does not support %s. Drop those flags or disable safe mode`, strings.Join(unsupported, ", "))
 	}
-	if os.Getenv("CI") != "" {
+	if clictx.IsCI() {
 		return nil, errors.New("safe mode is active but the interactive compose editor is unavailable in CI (the CI environment variable is set). Disable safe mode, or unset CI, to send messages")
 	}
 
@@ -59,7 +52,7 @@ func (c *command) redirectSendToCompose(ctx context.Context, targetInput, text s
 	// The editor waits on a human for as long as it takes.
 	c.rt.DisableTimeout()
 	payload, err := c.compose(ctx, c.rt, targetInput, text, composecmd.Options{
-		Workspace: c.rt.EffectiveWorkspace(opts.workspace),
+		Workspace: opts.workspace,
 		ThreadTS:  strings.TrimSpace(opts.threadTS),
 		NoUnfurl:  opts.noUnfurl,
 	})

@@ -356,6 +356,9 @@ func TestComposeTargets(t *testing.T) {
 			map[string]any{"channel": "C12345678", "text": "https://example.com", "thread_ts": "1770160500.000100", "unfurl_links": false, "unfurl_media": false}},
 		{"text after --", []string{"#general", "--", "-1 from me"},
 			map[string]any{"channel": "C12345678", "text": "-1 from me"}},
+		// A list starts with a dash: it is text, not a flag.
+		{"text starting with a dash", []string{"#general", "-- sent from the CLI", "--no-unfurl"},
+			map[string]any{"channel": "C12345678", "text": "-- sent from the CLI", "unfurl_links": false, "unfurl_media": false}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)
@@ -502,7 +505,7 @@ func TestComposeRejectsBadInputBeforeAnything(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"malformed --thread-ts", []string{"#general", "hi", "--thread-ts", "yesterday"}, "invalid thread ts"},
+		{"malformed --thread-ts", []string{"#general", "hi", "--thread-ts", "yesterday"}, "invalid --thread-ts"},
 		{"non-Slack URL", []string{"https://example.com/x", "hi"}, "unsupported target URL"},
 		{"no target", nil, "accepts between 1 and 2 arg(s)"},
 	} {

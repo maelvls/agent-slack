@@ -52,7 +52,7 @@ func TestSafeModeBlocksEditAndDelete(t *testing.T) {
 	h.mustFail(`"message delete" is blocked`, "delete", testChannel)
 	h.wantCalls()
 
-	if err := safeModeBlockedError("edit"); !strings.Contains(err.Error(), "SLACKCLI_SAFE_MODE") {
+	if err := h.rt.CheckSafeMode("message edit"); !strings.Contains(err.Error(), "SLACKCLI_SAFE_MODE") {
 		t.Errorf("error does not say how safe mode was enabled: %v", err)
 	}
 }
@@ -117,6 +117,22 @@ func TestSafeModeSendRefusesInCI(t *testing.T) {
 	}
 }
 
+// CI=0 and CI=false are not CI (clictx.IsCI): the editor opens, and a
+// human still has to press Send there.
+func TestSafeModeSendOpensTheEditorWhenCIIsOff(t *testing.T) {
+	for _, value := range []string{"0", "false", "FALSE"} {
+		h := newHarness(t)
+		h.rt.SafeModeFlag = true
+		h.composeResult = map[string]any{"ok": true, "cancelled": true}
+		t.Setenv("CI", value)
+		h.mustRun("send", "#general", "hi")
+		h.wantCalls()
+		if len(h.composed) != 1 {
+			t.Errorf("CI=%q: the editor was opened %d times", value, len(h.composed))
+		}
+	}
+}
+
 func TestSafeModeSendOpensComposeEditor(t *testing.T) {
 	h := newHarness(t)
 	h.rt.SafeModeFlag = true
@@ -144,13 +160,20 @@ func TestSafeModeSendOpensComposeEditor(t *testing.T) {
 	}
 }
 
-func TestSafeModeSendPassesEffectiveWorkspace(t *testing.T) {
+// The editor picks the workspace itself (cmdutil.Workspace): it is handed
+// the --workspace flag as given, not SLACK_WORKSPACE_URL, which a URL
+// target may override.
+func TestSafeModeSendPassesWorkspaceFlag(t *testing.T) {
 	h := newHarness(t)
 	h.rt.SafeModeFlag = true
 	h.composeResult = map[string]any{"ok": true, "cancelled": true}
 	t.Setenv("SLACK_WORKSPACE_URL", "https://other.slack.com")
 	got := h.mustRun("send", testURL, "hi")
-	if len(h.composed) != 1 || h.composed[0].opts.Workspace != "https://other.slack.com" || h.composed[0].target != testURL {
+	if len(h.composed) != 1 || h.composed[0].opts.Workspace != "" || h.composed[0].target != testURL {
+		t.Errorf("compose calls = %+v", h.composed)
+	}
+	h.mustRun("send", "#general", "hi", "--workspace", "acme")
+	if last := h.composed[len(h.composed)-1]; last.target != "#general" || last.opts.Workspace != "acme" {
 		t.Errorf("compose calls = %+v", h.composed)
 	}
 	wantJSON(t, got, `{"safe_mode": true, "redirected_from": "send", "ok": true, "cancelled": true}`)

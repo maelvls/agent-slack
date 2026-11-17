@@ -16,8 +16,8 @@ const MaxAhead = 120 * 24 * time.Hour
 // AtHelp describes what ParseAbsolute (--schedule) accepts, for flag help.
 const AtHelp = "an ISO 8601 timestamp with an explicit timezone (2026-06-15T18:00:00-07:00, 2026-06-15T16:00Z) or a Unix timestamp in seconds"
 
-// InHelp describes what ParseRelative (--schedule-in) accepts, for flag
-// help.
+// InHelp describes what ParseRelative accepts, for the help of
+// --schedule-in.
 const InHelp = `a duration from now (30m, 1.5h, 2d), ` +
 	`a day with an optional time ("today 5pm", "tomorrow", "tomorrow at 9:30am", "monday 9am", "next friday 17:00", "sat noon"; the time defaults to 9am), ` +
 	`or a Unix timestamp in seconds. Days and times are in the local timezone`
@@ -48,7 +48,7 @@ func ResolvePostAt(schedule, scheduleIn string, now time.Time, loc *time.Locatio
 	case schedule != "":
 		postAt, err = ParseAbsolute(schedule)
 	default:
-		postAt, err = ParseRelative(scheduleIn, now, loc)
+		postAt, err = ParseRelative("--schedule-in", scheduleIn, now, loc)
 	}
 	if err != nil {
 		return 0, false, err
@@ -124,8 +124,10 @@ func ParseAbsolute(input string) (int64, error) {
 	return 0, invalid
 }
 
-// ParseRelative parses a --schedule-in value into Unix seconds, relative
-// to now. Input is case-insensitive. The grammar is:
+// ParseRelative parses a relative time such as a --schedule-in value into
+// Unix seconds, relative to now. flag is the name of the flag the value
+// was given to, dashes included, for error messages. Input is
+// case-insensitive. The grammar is:
 //
 //	<n><unit>                     a duration from now; n may be fractional
 //	                              (30m, 1.5h, 2 days). Units: m, min, mins,
@@ -149,12 +151,12 @@ func ParseAbsolute(input string) (int64, error) {
 // Days and times are interpreted in loc (nil means time.Local). A time
 // skipped by a daylight-saving change (02:30 on the spring-forward day) is
 // an error. The result is not range-checked: see Validate.
-func ParseRelative(input string, now time.Time, loc *time.Location) (int64, error) {
+func ParseRelative(flag, input string, now time.Time, loc *time.Location) (int64, error) {
 	if loc == nil {
 		loc = time.Local
 	}
 	s := strings.ToLower(strings.TrimSpace(input))
-	invalid := fmt.Errorf("invalid --schedule-in value %q. %s", input, relativeUsage)
+	invalid := fmt.Errorf("invalid %s value %q. %s", flag, input, relativeUsage)
 	if s == "" {
 		return 0, invalid
 	}
@@ -166,7 +168,7 @@ func ParseRelative(input string, now time.Time, loc *time.Location) (int64, erro
 	}
 	t, ok, err := parseNamed(s, now.In(loc))
 	if err != nil {
-		return 0, fmt.Errorf("invalid --schedule-in value %q: %w", input, err)
+		return 0, fmt.Errorf("invalid %s value %q: %w", flag, input, err)
 	}
 	if !ok {
 		return 0, invalid

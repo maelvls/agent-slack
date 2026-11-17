@@ -2,13 +2,14 @@ package canvascmd
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/canvas"
-	"github.com/maelvls/slackcli/internal/slack/channels"
 )
 
 func newCreate(rt *clictx.Context) *cobra.Command {
@@ -32,7 +33,7 @@ in safe mode.`,
   canvas create --markdown $'# Launch plan\n\n- [ ] Ship it' --channel "#project-launch"`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := safeModeError(rt, "canvas create", "create"); err != nil {
+			if err := rt.CheckSafeMode("canvas create"); err != nil {
 				return err
 			}
 			content, err := readMarkdown(cmd, file, markdown)
@@ -44,10 +45,12 @@ in safe mode.`,
 				return errors.New("--channel is empty: pass a channel ID or name, or drop the flag for a standalone canvas")
 			}
 			ws := rt.EffectiveWorkspace(workspace)
+			var tab cmdutil.Target
 			if channel != "" {
-				if err := rt.AssertWorkspaceForChannelNames(ws, channel); err != nil {
-					return err
+				if tab, err = cmdutil.ParseChannel(rt, channel, workspace); err != nil {
+					return fmt.Errorf("--channel: %w", err)
 				}
+				ws = tab.Workspace
 			}
 
 			ctx := cmd.Context()
@@ -63,7 +66,7 @@ in safe mode.`,
 					if r.Auth.IsBrowser() {
 						return canvas.CreateResult{}, canvas.ErrBrowserChannel
 					}
-					if in.ChannelID, err = channels.ResolveID(ctx, r.Client, channel); err != nil {
+					if in.ChannelID, err = tab.ConversationID(ctx, r.Client); err != nil {
 						return canvas.CreateResult{}, err
 					}
 				}

@@ -36,12 +36,14 @@ func SystemKeychain() Keychain {
 
 type macKeychain struct{}
 
-func keychainTimeout() time.Duration {
+// KeychainTimeout bounds one call to the system keychain, which may block
+// on a prompt (SLACKCLI_KEYCHAIN_TIMEOUT_MS; default 3s).
+func KeychainTimeout() time.Duration {
 	return appinfo.EnvDurationMS("KEYCHAIN_TIMEOUT_MS", 3*time.Second, false)
 }
 
 func (macKeychain) Get(service, account string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), KeychainTimeout())
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "security", "find-generic-password", "-s", service, "-a", account, "-w").Output()
 	if err != nil {
@@ -56,7 +58,7 @@ func (macKeychain) Set(service, account, value string) bool {
 	if strings.ContainsAny(service+account+value, "\n\r\x00") {
 		return false
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), KeychainTimeout())
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "security", "-i")
 	cmd.Stdin = strings.NewReader("add-generic-password -U -s " + securityQuote(service) +
@@ -72,7 +74,7 @@ func (macKeychain) Set(service, account, value string) bool {
 }
 
 func (macKeychain) Delete(service, account string) {
-	ctx, cancel := context.WithTimeout(context.Background(), keychainTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), KeychainTimeout())
 	defer cancel()
 	_ = exec.CommandContext(ctx, "security", "delete-generic-password", "-s", service, "-a", account).Run()
 }

@@ -1,87 +1,58 @@
-# Contributing to agent-slack
+# Contributing to slackcli
 
-Thanks for contributing.
+Thanks for contributing. The conventions of the codebase are in [AGENTS.md](AGENTS.md); this file covers the workflow.
 
-## Attribution
+## Requirements
 
-If you'd like to be credited when we share your contribution on X, include your Twitter/X handle in your PR description.
+- Go, at the version given by the `go` line of `go.mod` (`actions/setup-go` reads the same file in CI).
+- `make`. Optional: `goreleaser` for `make snapshot`; `staticcheck` and `golangci-lint` for `make lint-extra`.
 
-## Development
-
-Install deps and run the CLI in dev mode:
-
-```bash
-bun install
-bun run dev -- --help
-```
-
-Build and test:
+## Make targets
 
 ```bash
-bun run build
-bun run test
-bun run typecheck
+make build        # static binary in build/slackcli (version "dev")
+make install      # install into GOBIN
+make test         # go test ./...
+make lint         # go vet + gofmt check (what CI enforces)
+make fmt          # gofmt -w cmd internal
+make lint-extra   # staticcheck / golangci-lint, if installed
+make snapshot     # every release archive into dist/, without publishing
+make clean
+make              # lint, test, build
 ```
 
-Lint and format:
+`make test PKGS=./internal/update/...` narrows build, vet and test to some packages.
 
-```bash
-bun run lint
-bun run format:check
-```
+## Tests
 
-Run via Bun directly (for local development):
+Tests never talk to Slack and never touch real credentials: fake the API with `slackapi.NewFake(handler)`, raw HTTP with `net/http/httptest`, and use `t.TempDir()` / `t.Setenv()`. Only the standard `testing` package is used.
 
-```bash
-bun ./bin/agent-slack.bun.js --help
-```
+The credential-extraction test against the applications installed on your own machine is skipped unless `SLACKCLI_LIVE_EXTRACT=1` is set.
+
+CI (`.github/workflows/ci.yml`) builds, vets and tests on Linux, macOS and Windows, and additionally checks `gofmt`, `go mod tidy -diff`, `go test -race ./...`, a cross-compile of every release target, `shellcheck install.sh` and `goreleaser check`.
+
+## Adding a command
+
+1. Put the Slack logic in `internal/slack/<domain>`: functions taking `ctx` and a `*slackapi.Client`, returning structs with `json:"snake_case"` tags. Test it with `slackapi.NewFake`.
+2. Create `internal/cmd/<name>cmd` exporting `func New(rt *clictx.Context) *cobra.Command` (or add a subcommand to an existing package). In `RunE`: validate flags, get the client with `rt.Client(ctx, rt.EffectiveWorkspace(flag))` inside `clictx.WithAutoRefresh`, `return rt.Print(result)`, and return errors instead of printing them. `internal/cmd/unreadscmd` is a small example.
+3. Register a new top-level command in `internal/cmd/root/root.go`.
+4. Write the `Short`/`Long` help and the flag usage carefully: arguments, the JSON printed, side effects, and whether safe mode covers it. A command that posts, edits or deletes must honour `rt.SafeMode()`.
+5. Update `README.md` (command map, safe mode table, environment variables) and `skills/slackcli/` if the command has non-obvious workflow, safety, targeting or output behaviour.
+6. Run `make lint test build` and read your command's `--help` in the built binary.
 
 ## Releasing (maintainers)
 
-Releases are binary-only via GitHub Releases. No npm publishing.
-
-### Using the release script
+Releases are binaries published on GitHub Releases by GoReleaser.
 
 ```bash
-# Bump to explicit version
-bun run release 0.2.0
-
-# Or use semver bump type
-bun run release patch   # 0.1.0 -> 0.1.1
-bun run release minor   # 0.1.0 -> 0.2.0
-bun run release major   # 0.1.0 -> 1.0.0
+git tag -a v1.2.3 -m "v1.2.3"
+git push origin v1.2.3
 ```
 
-The script will:
+Pushing a tag matching `v[0-9]+.[0-9]+.[0-9]+*` triggers `.github/workflows/release.yml`, which vets, tests and runs `goreleaser release --clean` (`.goreleaser.yaml`): it builds `slackcli_<darwin|linux|windows>_<amd64|arm64>.tar.gz` (`.zip` on Windows) and `checksums.txt`, stamps the version into the binary and publishes the GitHub release. A tag with a pre-release suffix such as `v1.2.3-rc.1` is published as a pre-release, which `install.sh` and `slackcli update` never pick up.
 
-1. Update version in `package.json`
-2. Commit with message `v{version}`
-3. Create git tag `v{version}`
-4. Push to origin (after confirmation)
+The archive names, the binary's place at the archive root and `checksums.txt` are a contract between `.goreleaser.yaml`, `install.sh` and `internal/update`; a test in `internal/update` fails when they drift. Try a release locally with `make snapshot`.
 
-Pushing the tag triggers the GitHub Actions `Release` workflow, which:
+## Renaming the tool
 
-- Builds native binaries for all platforms (macOS, Linux, Windows × x64, arm64)
-- Generates checksums
-- Uploads everything to the GitHub Release
-
-### Manual release (alternative)
-
-```bash
-# 1. Update version in package.json
-# 2. Commit and tag
-git add package.json
-git commit -m "v0.2.0"
-git tag v0.2.0
-git push origin main --tags
-```
-
-### User installation
-
-Users install the binary via:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/stablyai/agent-slack/main/install.sh | sh
-```
-
-Or download directly from [GitHub Releases](https://github.com/stablyai/agent-slack/releases).
+The name is defined in `internal/appinfo/appinfo.go` (`Name`, `EnvPrefix`, `Repo`), the module path in `go.mod`, the directory `cmd/slackcli`, two lines of `.goreleaser.yaml`, three lines at the top of `install.sh`, and the directory `skills/slackcli`. The Markdown files always write the name literally (`slackcli`, `SLACKCLI_`, `maelvls/slackcli`), so a search-and-replace covers them.

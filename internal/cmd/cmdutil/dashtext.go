@@ -1,4 +1,4 @@
-package messagecmd
+package cmdutil
 
 import (
 	"fmt"
@@ -8,11 +8,38 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Message text often starts with a dash ("- first item\n- second item" is
-// how a list is written), which the flag parser takes for a flag and
-// rejects with "unknown shorthand flag: ' '". Commands that take message
-// text therefore set DisableFlagParsing and parse their arguments with
-// parseArgsWithDashText.
+// AllowDashText lets the positional arguments of cmd start with a dash, as
+// message text often does ("- first item\n- second item" is how a list is
+// written): the flag parser would take such an argument for a flag and
+// reject it with "unknown shorthand flag: ' '".
+//
+// It takes over flag parsing, and with it the checks cobra skips for a
+// command that parses its own flags: cmd.Args and cmd.RunE, which must
+// both be set, then receive the positional arguments as usual. An
+// argument is text rather than a flag when it starts with a dash and what
+// would be the flag name contains whitespace; anything goes after "--".
+func AllowDashText(cmd *cobra.Command) *cobra.Command {
+	validate, run := cmd.Args, cmd.RunE
+	cmd.DisableFlagParsing = true
+	cmd.Args = cobra.ArbitraryArgs
+	cmd.RunE = func(cmd *cobra.Command, raw []string) error {
+		args, ok, err := parseArgsWithDashText(cmd, raw)
+		if !ok {
+			return err
+		}
+		if err := validate(cmd, args); err != nil {
+			return err
+		}
+		if err := cmd.ValidateRequiredFlags(); err != nil {
+			return err
+		}
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return err
+		}
+		return run(cmd, args)
+	}
+	return cmd
+}
 
 // isDashText reports whether arg starts with a dash but cannot be a flag,
 // because what would be the flag name contains whitespace.

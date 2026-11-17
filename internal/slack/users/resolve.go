@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/maelvls/slackcli/internal/appinfo"
@@ -52,26 +53,62 @@ func (e *AmbiguousError) Error() string {
 //
 //   - a user ID (U…/W…): returned as-is, without any API call;
 //   - an email address: one users.lookupByEmail call;
-//   - a handle, with or without "@", or failing that the exact display
-//     name or real name of a single member: a scan of the user directory
-//     (users.list), which is slow in large workspaces.
+//   - a handle, with or without "@": one search.messages "from:@handle"
+//     call, which finds anybody who posted a message the caller can see
+//     (user and browser tokens only);
+//   - failing that, a handle or the exact display name or real name of a
+//     single member: a scan of the user directory (users.list), which is
+//     slow in large workspaces and gets rate limited in huge ones.
 //
 // Matching is case-insensitive, and active members win over deactivated
 // ones. The error is a *NotFoundError when nobody matches and an
 // *AmbiguousError when a display name designates several members.
 func ResolveUserID(ctx context.Context, client *slackapi.Client, input string) (string, error) {
-	found, err := lookup(ctx, client, []string{input})
+	found, err := lookupAll(ctx, client, []string{input})
 	if err != nil {
 		return "", err
 	}
 	return found[0].id, nil
 }
 
-// found is a resolved user: its ID and, when the lookup came across it,
-// the raw Slack user object.
+// Resolution is the outcome of resolving one input of ResolveUserIDs.
+type Resolution struct {
+	// Input is the user reference, as given.
+	Input string
+	// ID is the user ID; "" when Err is set.
+	ID string
+	// Err says why Input designates no single member: a *NotFoundError,
+	// an *AmbiguousError, or a plain error for a blank input.
+	Err error
+}
+
+// ResolveUserIDs resolves several user references (see ResolveUserID) and
+// returns one Resolution per input, in order. The inputs that need the
+// user directory share a single scan of it.
+//
+// An input that designates nobody (or several members) is reported in its
+// Resolution and does not fail the others. The error is for failures that
+// leave the outcome unknown: dead credentials, cancellation, a directory
+// that cannot be scanned.
+func ResolveUserIDs(ctx context.Context, client *slackapi.Client, inputs []string) ([]Resolution, error) {
+	found, err := lookup(ctx, client, inputs)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Resolution, len(inputs))
+	for i, f := range found {
+		out[i] = Resolution{Input: inputs[i], ID: f.id, Err: f.err}
+	}
+	return out, nil
+}
+
+// found is the outcome for one input: the user's ID and, when the lookup
+// came across it, the raw Slack user object; or err when the input
+// designates no single member.
 type found struct {
 	id  string
 	raw map[string]any
+	err error
 }
 
 // want is one user being searched for in the directory.
@@ -86,18 +123,39 @@ type want struct {
 	named    []map[string]any // active members with that display or real name
 }
 
-// lookup resolves every input, or fails on the first that cannot be. All
-// the inputs that need the user directory share a single scan of it.
+// lookupAll is lookup for callers that need every input resolved: it
+// fails on the first that is not.
+func lookupAll(ctx context.Context, client *slackapi.Client, inputs []string) ([]found, error) {
+	out, err := lookup(ctx, client, inputs)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range out {
+		if f.err != nil {
+			return nil, f.err
+		}
+	}
+	return out, nil
+}
+
+// lookup resolves every input: out[i] is the outcome for inputs[i]. All
+// the inputs that need the user directory share a single scan of it. The
+// error is for operational failures only; an input matching nobody is
+// reported in its found.err.
 func lookup(ctx context.Context, client *slackapi.Client, inputs []string) ([]found, error) {
 	out := make([]found, len(inputs))
 	var wants []*want
+	// searched remembers the outcome per handle, so that a handle given
+	// twice costs one search.
+	searched := map[string]string{}
 	for i, input := range inputs {
 		trimmed := strings.TrimSpace(input)
 		if trimmed == "" {
-			return nil, errors.New("user is empty: pass a user ID (U…), an email address or a @handle")
+			out[i].err = errors.New("user is empty: pass a user ID (U…), an email address or a @handle")
+			continue
 		}
 		if slackid.IsUserID(trimmed) {
-			out[i] = found{id: trimmed}
+			out[i].id = trimmed
 			continue
 		}
 		w := &want{index: i, input: input, handle: strings.ToLower(strings.TrimPrefix(trimmed, "@"))}
@@ -111,7 +169,8 @@ func lookup(ctx context.Context, client *slackapi.Client, inputs []string) ([]fo
 			case slackapi.IsErrorCode(err, "users_not_found"):
 				// Slack's answer is authoritative: scanning the whole
 				// directory would only find the same nothing, slowly.
-				return nil, &NotFoundError{Input: input}
+				out[i].err = &NotFoundError{Input: input}
+				continue
 			case isFatal(ctx, err):
 				return nil, fmt.Errorf("looking up user %s: %w", trimmed, err)
 			}
@@ -119,7 +178,27 @@ func lookup(ctx context.Context, client *slackapi.Client, inputs []string) ([]fo
 			// scope …): look for the email in the directory instead.
 		}
 		if w.handle == "" {
-			return nil, &NotFoundError{Input: input}
+			out[i].err = &NotFoundError{Input: input}
+			continue
+		}
+		if w.email == "" && canSearch(client, w.handle) {
+			id, done := searched[w.handle]
+			if !done {
+				var err error
+				id, err = searchByHandle(ctx, client, w.handle)
+				if err != nil && (ctx.Err() != nil || slackapi.IsAuthError(err)) {
+					return nil, fmt.Errorf("looking up user @%s: %w", w.handle, err)
+				}
+				// Any other search failure (missing search:read scope,
+				// rate limit on the search tier …) leaves the directory
+				// to look at. So does finding nothing: somebody who
+				// never posted is invisible to search.
+				searched[w.handle] = id
+			}
+			if id != "" {
+				out[i].id = id
+				continue
+			}
 		}
 		wants = append(wants, w)
 	}
@@ -140,11 +219,11 @@ func lookup(ctx context.Context, client *slackapi.Client, inputs []string) ([]fo
 			for _, m := range w.named {
 				amb.Matches = append(amb.Matches, ToCompactUser(m))
 			}
-			return nil, amb
+			out[w.index].err = amb
 		case w.inactive != nil:
 			out[w.index] = found{id: jsonx.Str(w.inactive["id"]), raw: w.inactive}
 		default:
-			return nil, &NotFoundError{Input: w.input}
+			out[w.index].err = &NotFoundError{Input: w.input}
 		}
 	}
 	return out, nil
@@ -161,6 +240,44 @@ func lookupByEmail(ctx context.Context, client *slackapi.Client, email string) (
 	return nil, nil
 }
 
+// canSearch reports whether the search.messages shortcut is worth trying:
+// bot tokens cannot call search.*, and something with spaces or quotes is
+// a display name, not a handle, and cannot be embedded in a query.
+func canSearch(client *slackapi.Client, handle string) bool {
+	if strings.HasPrefix(client.Auth().BearerToken(), "xoxb-") {
+		return false
+	}
+	return !strings.ContainsAny(handle, " \t\n\"")
+}
+
+// searchResults is how many matches searchByHandle asks for. Search is
+// fuzzy about "from:": a few results give the exact handle a chance to
+// show up behind a near miss.
+const searchResults = 5
+
+// searchByHandle finds a user through the messages they posted: Slack has
+// no handle→ID lookup, and the user directory of a large workspace cannot
+// be paged through. It returns "" when no message is from that handle.
+func searchByHandle(ctx context.Context, client *slackapi.Client, handle string) (string, error) {
+	resp, err := client.API(ctx, "search.messages", map[string]any{
+		"query":    "from:@" + handle,
+		"count":    searchResults,
+		"sort":     "timestamp",
+		"sort_dir": "desc",
+	})
+	if err != nil {
+		return "", err
+	}
+	for _, m := range jsonx.Maps(jsonx.Get(resp, "messages", "matches")) {
+		// Only trust a message whose author has exactly that handle:
+		// "from:" also matches display names and similar handles.
+		if id := jsonx.Str(m["user"]); slackid.IsUserID(id) && strings.EqualFold(jsonx.Str(m["username"]), handle) {
+			return id, nil
+		}
+	}
+	return "", nil
+}
+
 // scanDirectory pages through users.list filling in wants, and stops as
 // soon as each of them has an active handle (or email) match.
 func scanDirectory(ctx context.Context, client *slackapi.Client, wants []*want) error {
@@ -172,7 +289,7 @@ func scanDirectory(ctx context.Context, client *slackapi.Client, wants []*want) 
 		}
 		resp, err := client.API(ctx, "users.list", params)
 		if err != nil {
-			return fmt.Errorf("searching the user directory: %w", err)
+			return scanError(err, wants)
 		}
 		for _, m := range jsonx.Maps(resp["members"]) {
 			if jsonx.Str(m["id"]) == "" {
@@ -192,6 +309,26 @@ func scanDirectory(ctx context.Context, client *slackapi.Client, wants []*want) 
 		}
 		cursor = next
 	}
+}
+
+// scanError explains a failed directory scan. Being rate limited is the
+// normal outcome in a workspace with tens of thousands of members, where
+// retrying does not help: the message says what to pass instead.
+func scanError(err error, wants []*want) error {
+	var rl *slackapi.RateLimitError
+	if !errors.As(err, &rl) {
+		return fmt.Errorf("searching the user directory: %w", err)
+	}
+	var missing []string
+	for _, w := range wants {
+		if w.active == nil {
+			missing = append(missing, strconv.Quote(w.input))
+		}
+	}
+	return fmt.Errorf("could not resolve user %s: this workspace is too large to scan its user directory (users.list was rate limited). "+
+		"Pass the user ID (U…) or the email address instead: a handle is only found without a scan when it is the exact @handle of somebody who posted a message you can see. "+
+		"Setting %s to a large value makes the scan wait and carry on, which can take very long: %w",
+		strings.Join(missing, ", "), appinfo.EnvName("RATE_LIMIT_MAX_WAIT_MS"), err)
 }
 
 func (w *want) consider(m map[string]any) {

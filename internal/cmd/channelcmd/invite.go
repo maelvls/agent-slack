@@ -136,20 +136,19 @@ did go through.`,
 func inviteMembers(ctx context.Context, rt *clictx.Context, client *slackapi.Client, channelID string, targets []string) (any, error) {
 	payload := inviteResult{ChannelID: channelID}
 	var userIDs []string
-	for _, target := range targets {
-		id, err := users.ResolveUserID(ctx, client, target)
-		var notFound *users.NotFoundError
-		var ambiguous *users.AmbiguousError
-		switch {
-		case err == nil:
-			userIDs = append(userIDs, id)
-		case errors.As(err, &notFound), errors.As(err, &ambiguous):
-			payload.UnresolvedUsers = append(payload.UnresolvedUsers, target)
-			rt.Hintf("%v", err)
-		default:
-			// Nobody has been invited yet: a clean failure.
-			return nil, err
+	// One batch: the handles that need the user directory share one scan.
+	resolved, err := users.ResolveUserIDs(ctx, client, targets)
+	if err != nil {
+		// Nobody has been invited yet: a clean failure.
+		return nil, err
+	}
+	for _, r := range resolved {
+		if r.Err != nil {
+			payload.UnresolvedUsers = append(payload.UnresolvedUsers, r.Input)
+			rt.Hintf("%v", r.Err)
+			continue
 		}
+		userIDs = append(userIDs, r.ID)
 	}
 
 	res, err := channeladmin.InviteUsers(ctx, client, channelID, userIDs)
