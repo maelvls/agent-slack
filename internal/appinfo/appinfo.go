@@ -6,6 +6,7 @@ package appinfo
 import (
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -31,6 +32,19 @@ const (
 // Version is set at build time with
 // -ldflags "-X github.com/maelvls/slackcli/internal/appinfo.Version=v1.2.3".
 var Version = "dev"
+
+func init() {
+	// `go install module/cmd/name@v1.2.3` builds carry no ldflags; take the
+	// version from the module metadata instead.
+	if Version != "dev" {
+		return
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			Version = v
+		}
+	}
+}
 
 // UserAgent is sent on every HTTP request.
 func UserAgent() string { return Name + "/" + strings.TrimPrefix(Version, "v") }
