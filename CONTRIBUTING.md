@@ -23,6 +23,10 @@ bun run test
 bun run typecheck
 ```
 
+To use your checkout as the global `agent-slack`, run `make install` (node
+build + `npm link`). `bun run build` targets Bun and crashes under node, which
+is what the npm bin uses. `make help` lists the other targets.
+
 Lint and format:
 
 ```bash
