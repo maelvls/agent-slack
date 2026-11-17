@@ -43,14 +43,16 @@ const BLOCKQUOTE_RE = /^> (.*)$/;
  * Parse mrkdwn inline formatting into Slack rich_text inline elements.
  *
  * Handles: *bold*, _italic_, ~strike~, `code`, :emoji:, <url|label>, <url>,
- * and CommonMark [label](url) links. Like Slack mrkdwn, style markers only
- * count at word boundaries with no whitespace just inside them, so my_var_name
- * and 2 * 3 * 4 stay literal, as do markers inside bare URLs.
+ * and the CommonMark forms **bold**, ~~strike~~ and [label](url). Without the
+ * CommonMark forms, **bold** would render as a bold word wrapped in literal
+ * asterisks. Like Slack mrkdwn, style markers only count at word boundaries
+ * with no whitespace just inside them, so my_var_name and 2 * 3 * 4 stay
+ * literal, as do markers inside bare URLs.
  */
 export function parseInlineElements(text: string): InlineElement[] {
   const elements: InlineElement[] = [];
   const re =
-    /`([^`]+)`|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)(?:\([^\s()]*\)|[^\s()])*)\)|(?:^|(?<=[^A-Za-z0-9_])):([a-zA-Z0-9_+-]+):(?![A-Za-z0-9_+-])|(https?:\/\/[^\s<>]+)|(?:^|(?<=[^A-Za-z0-9_]))\*(?!\s)([^*]+)(?<!\s)\*(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))_(?!\s)([^_]+)(?<!\s)_(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))~(?!\s)([^~]+)(?<!\s)~(?![A-Za-z0-9_])|<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>|<#([CG][A-Z0-9]+)(?:\|[^>]*)?>|<!subteam\^([A-Z0-9]+)(?:\|[^>]*)?>|<!(here|channel|everyone)(?:\|[^>]*)?>|<([^>|]+)\|([^>]+)>|<([^>|]+)>|(?:^|(?<=[^A-Za-z0-9_]))@([UWB][A-Z0-9]{6,})\b|(?:^|(?<=[^A-Za-z0-9_]))@(here|channel|everyone)\b/g;
+    /`([^`]+)`|\[([^\]\n]+)\]\(((?:https?:\/\/|mailto:)(?:\([^\s()]*\)|[^\s()])*)\)|(?:^|(?<=[^A-Za-z0-9_])):([a-zA-Z0-9_+-]+):(?![A-Za-z0-9_+-])|(https?:\/\/[^\s<>]+)|(?:^|(?<=[^A-Za-z0-9_]))\*\*(?!\s)([^*]+)(?<!\s)\*\*(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))~~(?!\s)([^~]+)(?<!\s)~~(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))\*(?!\s)([^*]+)(?<!\s)\*(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))_(?!\s)([^_]+)(?<!\s)_(?![A-Za-z0-9_])|(?:^|(?<=[^A-Za-z0-9_]))~(?!\s)([^~]+)(?<!\s)~(?![A-Za-z0-9_])|<@([UWB][A-Z0-9]+)(?:\|[^>]*)?>|<#([CG][A-Z0-9]+)(?:\|[^>]*)?>|<!subteam\^([A-Z0-9]+)(?:\|[^>]*)?>|<!(here|channel|everyone)(?:\|[^>]*)?>|<([^>|]+)\|([^>]+)>|<([^>|]+)>|(?:^|(?<=[^A-Za-z0-9_]))@([UWB][A-Z0-9]{6,})\b|(?:^|(?<=[^A-Za-z0-9_]))@(here|channel|everyone)\b/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -68,6 +70,8 @@ export function parseInlineElements(text: string): InlineElement[] {
       mdLinkUrl,
       emojiName,
       plainUrl,
+      mdBold,
+      mdStrike,
       bold,
       italic,
       strike,
@@ -96,6 +100,10 @@ export function parseInlineElements(text: string): InlineElement[] {
       elements.push({ type: "link", url: mdLinkUrl, text: mdLinkText });
     } else if (emojiName != null) {
       elements.push({ type: "emoji", name: emojiName });
+    } else if (mdBold != null) {
+      elements.push({ type: "text", text: mdBold, style: { bold: true } });
+    } else if (mdStrike != null) {
+      elements.push({ type: "text", text: mdStrike, style: { strike: true } });
     } else if (bold != null) {
       elements.push({ type: "text", text: bold, style: { bold: true } });
     } else if (italic != null) {

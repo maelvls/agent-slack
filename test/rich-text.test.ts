@@ -14,6 +14,24 @@ describe("parseInlineElements", () => {
     ]);
   });
 
+  test("CommonMark **bold** is parsed as bold without stray asterisks", () => {
+    expect(parseInlineElements("**What's going on**")).toEqual([
+      { type: "text", text: "What's going on", style: { bold: true } },
+    ]);
+    expect(parseInlineElements("**Strict gates:** approving Inception")).toEqual([
+      { type: "text", text: "Strict gates:", style: { bold: true } },
+      { type: "text", text: " approving Inception" },
+    ]);
+  });
+
+  test("CommonMark ~~strike~~ is parsed as strike", () => {
+    expect(parseInlineElements("a ~~gone~~ b")).toEqual([
+      { type: "text", text: "a " },
+      { type: "text", text: "gone", style: { strike: true } },
+      { type: "text", text: " b" },
+    ]);
+  });
+
   test("_italic_ is parsed with italic style", () => {
     expect(parseInlineElements("This is _important_")).toEqual([
       { type: "text", text: "This is " },
@@ -282,6 +300,23 @@ describe("textToRichTextBlocks", () => {
     expect(result).not.toBeNull();
     const list = result[0]!.elements.find((e) => e.type === "rich_text_list")!;
     expect((list as { style: string }).style).toBe("ordered");
+  });
+
+  test("**bold** labels in list items have no stray asterisks", () => {
+    const result = textToRichTextBlocks("- **Label:** rest");
+    expect(result![0]!.elements[0]).toEqual({
+      type: "rich_text_list",
+      style: "bullet",
+      elements: [
+        {
+          type: "rich_text_section",
+          elements: [
+            { type: "text", text: "Label:", style: { bold: true } },
+            { type: "text", text: " rest" },
+          ],
+        },
+      ],
+    });
   });
 
   test("bold text in list items is parsed", () => {
