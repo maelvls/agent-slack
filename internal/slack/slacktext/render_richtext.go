@@ -122,12 +122,15 @@ func (rt richText) element(el map[string]any) string {
 // four spaces per level, which Markdown reads as nesting under both "- " and
 // "1. " items.
 func (rt richText) list(el map[string]any) string {
+	// The numbers come from Slack's JSON, which anyone can post: they are
+	// clamped so that a forged block cannot make us allocate gigabytes of
+	// padding or overflow the item numbers.
 	indent, _ := jsonx.Int(el["indent"])
-	pad := strings.Repeat("    ", max(indent, 0))
+	pad := strings.Repeat("    ", min(max(indent, 0), maxListIndent))
 	// A list that resumes after nested items carries the number of items
 	// before it.
 	num, _ := jsonx.Int(el["offset"])
-	num = max(num, 0)
+	num = min(max(num, 0), maxListOffset)
 	ordered := jsonx.Str(el["style"]) == "ordered"
 
 	var items []string
@@ -146,6 +149,9 @@ func (rt richText) list(el map[string]any) string {
 	}
 	return strings.Join(items, "\n")
 }
+
+// maxListOffset bounds the `offset` of a rich_text_list we render.
+const maxListOffset = 1_000_000
 
 var tokenURLEscaper = strings.NewReplacer("<", "%3C", ">", "%3E", "|", "%7C", "\n", "%0A")
 
@@ -209,7 +215,14 @@ func (rt richText) date(el map[string]any) string {
 	if !ok {
 		return rt.literal(fallback)
 	}
-	token := "<!date^" + strconv.Itoa(ts) + "^{date_short_pretty} {time}"
+	format := jsonx.Str(el["format"])
+	if format == "" || strings.ContainsAny(format, "<>|^\n") {
+		format = "{date_short_pretty} {time}"
+	}
+	token := "<!date^" + strconv.Itoa(ts) + "^" + format
+	if url := jsonx.Str(el["url"]); url != "" {
+		token += "^" + tokenURLEscaper.Replace(url)
+	}
 	if fallback != "" {
 		token += "|" + rt.literal(fallback)
 	}

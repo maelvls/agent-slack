@@ -1,6 +1,7 @@
 package authcmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/appinfo"
+	"github.com/maelvls/slackcli/internal/auth"
 	"github.com/maelvls/slackcli/internal/clictx"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
@@ -32,6 +34,9 @@ type whoamiOutput struct {
 	DefaultWorkspaceURL string            `json:"default_workspace_url"`
 	Workspaces          []whoamiWorkspace `json:"workspaces"`
 	Environment         *whoamiEnv        `json:"environment,omitempty"`
+	// Hint says what to do when several workspaces are configured and
+	// none is the default.
+	Hint string `json:"hint,omitempty"`
 }
 
 type whoamiWorkspace struct {
@@ -43,8 +48,9 @@ type whoamiWorkspace struct {
 	CookieD string `json:"cookie_d"`
 	// Default marks the workspace used when none is selected.
 	Default bool `json:"default,omitempty"`
-	// Secrets is "ok", or "missing" when the credentials file references
-	// secrets that are no longer in the keychain.
+	// Secrets is "ok", "missing" when the credentials file references
+	// secrets that are no longer in the keychain, or "unavailable" when
+	// the keychain could not be read (locked, timed out).
 	Secrets string `json:"secrets"`
 	Hint    string `json:"hint,omitempty"`
 }
@@ -68,7 +74,12 @@ credentials come from. Tokens and cookies are redacted.
 
 This reads local configuration only; use "auth test" to check that the
 credentials still work. A workspace with "secrets": "missing" has lost its
-keychain entries and must be imported again.`,
+keychain entries and must be imported again; "unavailable" means that the
+keychain could not be read just now (locked, or a prompt timed out).
+
+"default_workspace_url" is empty when several workspaces are configured and
+none was chosen: commands then need --workspace (or SLACK_WORKSPACE_URL)
+until "auth set-default" is run; "hint" says so.`,
 		Args: cobra.NoArgs,
 		RunE: func(*cobra.Command, []string) error {
 			creds, err := rt.Store.Load()
@@ -80,6 +91,7 @@ keychain entries and must be imported again.`,
 				UpdatedAt:           creds.UpdatedAt,
 				DefaultWorkspaceURL: creds.DefaultWorkspaceURL,
 				Environment:         environmentAuth(),
+				Hint:                noDefaultAdvice(rt),
 			}
 			def := creds.Default()
 			for _, w := range creds.Workspaces {
@@ -92,10 +104,17 @@ keychain entries and must be imported again.`,
 				}
 				// The file may only hold keychain placeholders: redact
 				// the real values, never a placeholder.
-				if resolved, ok := rt.Store.Resolve(w); ok {
+				resolved, err := rt.Store.Resolve(w)
+				var unusable *auth.SecretsError
+				switch {
+				case err == nil:
 					row.Token = redactSecret(resolved.BearerToken())
 					row.CookieD = redactSecret(resolved.XoxdCookie)
-				} else {
+				case errors.As(err, &unusable) && !unusable.Missing():
+					row.Secrets = "unavailable"
+					row.Hint = fmt.Sprintf(`the keychain could not be read (%v): unlock it or raise %s, then try again; the workspace itself is still configured`,
+						unusable.Cause, appinfo.EnvName("KEYCHAIN_TIMEOUT_MS"))
+				default:
 					row.Secrets = "missing"
 					row.Hint = fmt.Sprintf(`the secrets of this workspace are not in the keychain any more: import them again (e.g. "%s auth import-desktop")`, appinfo.Name)
 				}

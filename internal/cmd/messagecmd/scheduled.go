@@ -19,7 +19,8 @@ type scheduledListOptions struct {
 	oldest    string
 	latest    string
 	cursor    string
-	limit     string
+	// limit is 0 when --limit was not given: Slack's default.
+	limit int
 }
 
 // cancelResult is the output of "scheduled cancel".
@@ -38,7 +39,7 @@ func addScheduledListFlags(cmd *cobra.Command, o *scheduledListOptions) {
 	f.StringVar(&o.oldest, "oldest", "", "Only messages scheduled to post after this Unix timestamp (seconds)")
 	f.StringVar(&o.latest, "latest", "", "Only messages scheduled to post before this Unix timestamp (seconds)")
 	f.StringVar(&o.cursor, "cursor", "", `Fetch the next page: the "next_cursor" of the previous output`)
-	f.StringVar(&o.limit, "limit", "", "Max scheduled messages per page (positive integer; default: Slack's)")
+	f.IntVar(&o.limit, "limit", 0, "Max scheduled messages per page (positive integer; default: Slack's)")
 }
 
 func (c *command) newScheduled() *cobra.Command {
@@ -65,8 +66,9 @@ func (c *command) newScheduledList() *cobra.Command {
 		Long: `List pending scheduled messages.
 
 Prints {ok, scheduled_messages: [{id, channel_id, post_at, date_created, text}],
-next_cursor}. "id" and "channel_id" are what "scheduled cancel" needs; pass
-"next_cursor", when present, as --cursor to get the next page.`,
+next_cursor}. "scheduled_messages" is [] when there are none. "id" and
+"channel_id" are what "scheduled cancel" needs; pass "next_cursor", when
+present, as --cursor to get the next page.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return c.runScheduledList(cmd, opts) },
 	}
@@ -76,21 +78,20 @@ next_cursor}. "id" and "channel_id" are what "scheduled cancel" needs; pass
 
 func (c *command) runScheduledList(cmd *cobra.Command, opts scheduledListOptions) error {
 	ctx := cmd.Context()
-	limit, err := cmdutil.ParseLimit(opts.limit)
-	if err != nil {
+	if err := cmdutil.CheckOptionalLimit(cmd, opts.limit); err != nil {
 		return err
-	}
-	if cmd.Flags().Changed("limit") && limit == 0 {
-		return errors.New("invalid --limit value \"\": must be a positive integer")
 	}
 	listOpts := scheduled.ListOptions{
 		Cursor: strings.TrimSpace(opts.cursor),
 		Oldest: opts.oldest,
 		Latest: opts.latest,
-		Limit:  limit,
+		Limit:  opts.limit,
 	}
 
-	var result scheduled.ListResult
+	var (
+		result scheduled.ListResult
+		err    error
+	)
 	if strings.TrimSpace(opts.channel) == "" {
 		if cmd.Flags().Changed("channel") {
 			return errors.New("--channel needs a value: " + scheduledChannelHelp)
@@ -116,7 +117,7 @@ func (c *command) runScheduledList(cmd *cobra.Command, opts scheduledListOptions
 	if err != nil {
 		return err
 	}
-	return c.rt.Print(result)
+	return cmdutil.PrintList(c.rt, result, "scheduled_messages")
 }
 
 func (c *command) newScheduledCancel() *cobra.Command {
@@ -130,9 +131,13 @@ func (c *command) newScheduledCancel() *cobra.Command {
 "id" printed by "message scheduled list"). Slack refuses to cancel a message
 due within the next 60 seconds.
 
-Prints {ok, channel_id, scheduled_message_id}. Not covered by safe mode.`,
+Prints {ok, channel_id, scheduled_message_id}. Refused in safe mode: a human
+must decide that a message they scheduled is not to be sent after all.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := c.rt.CheckSafeMode("message scheduled cancel"); err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			id := strings.TrimSpace(args[0])
 			if id == "" {

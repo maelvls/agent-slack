@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/users"
 )
 
@@ -47,8 +48,8 @@ func newListCommand(rt *clictx.Context) *cobra.Command {
 Prints {"users": […], "next_cursor": …}. Each user has id, name (the
 handle), real_name, display_name, email, title, tz, is_bot, deleted,
 status_text, status_emoji, status_expiration, and dm_id when you already
-have a DM with them. next_cursor is present when there are more users:
-pass it to --cursor.`,
+have a DM with them. "users" is [] when the page is empty. next_cursor is
+present when there are more users: pass it to --cursor.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if limit < 1 || limit > maxListLimit {
@@ -66,7 +67,7 @@ pass it to --cursor.`,
 			if err != nil {
 				return err
 			}
-			return rt.Print(payload)
+			return cmdutil.PrintList(rt, payload, "users")
 		},
 	}
 	clictx.AddWorkspaceFlag(cmd, &workspace)

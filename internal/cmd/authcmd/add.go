@@ -31,12 +31,17 @@ token) from the environment:
   SLACK_TOKEN=xoxb-… %[1]s auth add --workspace-url https://myteam.slack.com --from-env
 
 --token, --xoxc and --xoxd put the secret on the command line, where other
-processes on the machine and the shell history can see it.`, appinfo.Name),
+processes on the machine and the shell history can see it.
+
+--workspace-url must be an https Slack workspace URL (*.slack.com or
+*.slack-gov.com): credentials are never saved for, or sent to, another host.
+Credentials already saved for that workspace are replaced. The first
+workspace saved becomes the default (see "auth set-default").`, appinfo.Name),
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			u, err := auth.NormalizeURL(workspaceURL)
 			if err != nil {
-				return fmt.Errorf("--workspace-url must be a workspace URL like https://myteam.slack.com (got %q)", workspaceURL)
+				return fmt.Errorf("--workspace-url must be a workspace URL like https://myteam.slack.com (got %q): credentials are only saved for, and sent to, https Slack workspaces (*.slack.com, *.slack-gov.com)", workspaceURL)
 			}
 			onArgv := token != "" || xoxc != "" || xoxd != ""
 			if fromEnv {

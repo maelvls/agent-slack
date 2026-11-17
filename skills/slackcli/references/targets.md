@@ -10,7 +10,7 @@ A message URL supplies the workspace, channel and message timestamp:
 
 - `message get`, `edit`, `delete`, `react add/remove` act on that message. A `--ts` that contradicts the URL is an error.
 - `message list` returns the whole thread the message belongs to.
-- `message send` replies in that message's thread and refuses `--thread-ts`. `message compose` and `message draft create` reply in the thread too, unless `--thread-ts` overrides it.
+- `message send` and `message compose` reply in that message's thread; `--thread-ts` is redundant there and refused when it names another thread. `message draft create` replies in the thread too, unless `--thread-ts` overrides it.
 - `channel mark` moves the read cursor to that message (`--ts` overrides the timestamp); `later save/complete/archive/reopen/remove/remind` act on that message and refuse `--ts`. Both refuse `--workspace` with a URL that names its workspace.
 
 A Slack URL that points at a channel rather than a message is a channel target. Hosts other than `*.slack.com` / `*.slack-gov.com` are rejected.
@@ -31,4 +31,4 @@ Other argument kinds:
 
 ## Workspaces
 
-Targets that are not workspace URLs carry no workspace. The workspace is then `--workspace <url-or-unique-substring>`, else `SLACK_WORKSPACE_URL`, else the default workspace (`auth whoami` shows it; `auth set-default` changes it). With several workspaces configured and no default, a channel name without `--workspace` is rejected as ambiguous. Pass `--workspace` for channel, user, canvas and workflow IDs that are not in the default workspace.
+Targets that are not workspace URLs carry no workspace. The workspace is then `--workspace <url-or-unique-substring>`, else `SLACK_WORKSPACE_URL`, else the default workspace (`auth whoami` shows it; `auth set-default` changes it; importing several workspaces at once sets none). With several workspaces configured and no default, a channel name without `--workspace` is rejected as ambiguous. Pass `--workspace` for channel, user, canvas and workflow IDs that are not in the default workspace.

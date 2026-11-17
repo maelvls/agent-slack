@@ -138,10 +138,51 @@ func TestSendToURLOfTopLevelMessage(t *testing.T) {
 	}
 }
 
-func TestSendToURLRejectsThreadTS(t *testing.T) {
+// --thread-ts may repeat the thread a message URL designates, but not
+// name another one ("message compose" applies the same rule).
+func TestSendToURLWithThreadTS(t *testing.T) {
+	const url = testWorkspace + "/archives/C12345678/p1770160500000100"
 	h := newHarness(t)
-	h.mustFail("--thread-ts cannot be combined with a message URL", "send", testURL, "hi", "--thread-ts", "1770160000.000001")
-	h.wantCalls()
+	h.fixtures["conversations.history"] = func(map[string]any) (map[string]any, error) {
+		return map[string]any{"ok": true, "messages": []any{
+			map[string]any{"ts": "1770160500.000100", "thread_ts": "1770160000.000001", "text": "reply"},
+		}}, nil
+	}
+	got := h.mustRun("send", url, "hi", "--thread-ts", "1770160000.000001")
+	if ts := h.callsTo("chat.postMessage")[0].params["thread_ts"]; ts != "1770160000.000001" || got["thread_ts"] != "1770160000.000001" {
+		t.Errorf("thread_ts = %v, printed %v", ts, got)
+	}
+
+	for _, other := range []string{"1770150000.000001", "1770160500.000100"} {
+		h.mustFail("--thread-ts "+other+" contradicts the message URL, whose thread is 1770160000.000001", "send", url, "hi", "--thread-ts", other)
+		if len(h.callsTo("chat.postMessage")) != 0 {
+			t.Errorf("--thread-ts %s: posted", other)
+		}
+	}
+}
+
+// An upload may outlast the command timeout: "send --attach" switches the
+// watchdog off before uploading, and only then.
+func TestSendAttachDisablesTheCommandTimeout(t *testing.T) {
+	for _, attach := range []bool{true, false} {
+		h := newHarness(t)
+		uploadFixtures(h)
+		disabled := false
+		h.rt.SetWatchdogCanceller(func() {
+			disabled = true
+			if n := len(h.callsTo("files.getUploadURLExternal")); n != 0 {
+				t.Error("the timeout was disabled after the upload had started")
+			}
+		})
+		args := []string{"send", testChannel, "here's the report"}
+		if attach {
+			args = append(args, "--attach", writeFile(t, "report.md", "# report\n"))
+		}
+		h.mustRun(args...)
+		if disabled != attach {
+			t.Errorf("--attach given: %v; command timeout disabled: %v", attach, disabled)
+		}
+	}
 }
 
 func TestSendToMissingMessageURLDoesNotPost(t *testing.T) {

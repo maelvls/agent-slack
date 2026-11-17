@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/maelvls/slackcli/internal/jsonx"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
@@ -30,6 +31,10 @@ type ConversationsPage struct {
 	Channels []map[string]any `json:"channels"`
 	// NextCursor is the cursor of the next page ("" on the last page).
 	NextCursor string `json:"next_cursor,omitempty"`
+	// Warnings say what is missing from Channels because Slack rate
+	// limited the lookups (ListViaCounts), for the caller to show on
+	// stderr.
+	Warnings []string `json:"-"`
 }
 
 // ListOptions selects a page of conversations.
@@ -102,7 +107,9 @@ func ListAll(ctx context.Context, client *slackapi.Client, opts ListOptions) (Co
 // client.counts returns every conversation ID at once (channels, then
 // group DMs, then DMs) and no names, so the page is cut locally and each
 // ID is enriched with conversations.info; a conversation whose info cannot
-// be read is returned as {"id": …}. Only opts.Limit and opts.Cursor are
+// be read is returned as {"id": …}, and so are those left once
+// conversations.info gets rate limited (see ConversationsPage.Warnings).
+// Only opts.Limit and opts.Cursor are
 // honoured; the cursor is the offset into that list, as returned in
 // NextCursor.
 func ListViaCounts(ctx context.Context, client *slackapi.Client, opts ListOptions) (ConversationsPage, error) {
@@ -137,26 +144,44 @@ func ListViaCounts(ctx context.Context, client *slackapi.Client, opts ListOption
 	}
 	ids = ids[offset:end]
 
+	// The details of each conversation are an enrichment (see package
+	// enrich): only dead credentials and cancellation fail the listing,
+	// and a rate limit stops the lookups, leaving {"id": …} entries.
 	page.Channels = make([]map[string]any, len(ids))
+	ctx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
 	var wg sync.WaitGroup
+	var limited enrich.Gate
 	sem := make(chan struct{}, infoConcurrency)
 	for i, id := range ids {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			page.Channels[i] = map[string]any{"id": id}
-			info, err := client.API(ctx, "conversations.info", map[string]any{"channel": id})
-			if err != nil {
+			if ctx.Err() != nil || limited.Closed() {
 				return
 			}
-			if ch := jsonx.Map(info["channel"]); ch != nil {
-				page.Channels[i] = ch
+			info, err := client.API(ctx, "conversations.info", map[string]any{"channel": id})
+			switch {
+			case err == nil:
+				if ch := jsonx.Map(info["channel"]); ch != nil {
+					page.Channels[i] = ch
+				}
+			case enrich.MustAbort(ctx, err):
+				cancel(fmt.Errorf("looking up conversation %s: %w", id, err))
+			default:
+				limited.Failed(err)
 			}
 		})
 	}
 	wg.Wait()
-	if err := ctx.Err(); err != nil {
+	if err := context.Cause(ctx); err != nil {
 		return ConversationsPage{}, err
+	}
+	if n, err := limited.Skipped(); n > 0 {
+		page.Warnings = append(page.Warnings, fmt.Sprintf(
+			"the details of %d of %d conversations were not looked up (%v): they are listed by ID only; %s",
+			n, len(ids), err, enrich.Hint()))
 	}
 	return page, nil
 }

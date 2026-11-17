@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
@@ -183,6 +184,36 @@ func TestListViaCountsKeepsIDWhenInfoFails(t *testing.T) {
 	}
 }
 
+// The details are an enrichment: a rate limit keeps the IDs that
+// client.counts gave, dead credentials must reach the caller.
+func TestListViaCountsDegradesWhenRateLimited(t *testing.T) {
+	var entries []any
+	for i := range 40 {
+		entries = append(entries, map[string]any{"id": fmt.Sprintf("C%09d", i)})
+	}
+	rec := countsRecorder(map[string]any{"channels": entries}, func(string) (map[string]any, error) {
+		return nil, &slackapi.RateLimitError{Method: "conversations.info", RetryAfter: time.Minute}
+	})
+	page, err := ListViaCounts(context.Background(), rec.client(), ListOptions{Limit: 100})
+	if err != nil {
+		t.Fatalf("err = %v, want the conversations by ID", err)
+	}
+	if len(page.Channels) != 40 || !reflect.DeepEqual(page.Channels[39], map[string]any{"id": "C000000039"}) {
+		t.Errorf("channels = %v", page.Channels)
+	}
+	if n := len(rec.only("conversations.info")); n > infoConcurrency {
+		t.Errorf("%d conversations.info calls after being rate limited, want at most %d", n, infoConcurrency)
+	}
+	if len(page.Warnings) != 1 || !strings.Contains(page.Warnings[0], "40 of 40 conversations") || !strings.Contains(page.Warnings[0], "rate limited") {
+		t.Errorf("warnings = %q", page.Warnings)
+	}
+
+	rec = countsRecorder(map[string]any{"channels": entries}, func(string) (map[string]any, error) { return apiError("token_expired"), nil })
+	if _, err := ListViaCounts(context.Background(), rec.client(), ListOptions{Limit: 100}); !slackapi.IsAuthError(err) {
+		t.Errorf("err = %v, want an auth error so that credentials get refreshed", err)
+	}
+}
+
 func TestListViaCountsPagesLocally(t *testing.T) {
 	counts := map[string]any{"channels": []any{
 		map[string]any{"id": "C1"}, map[string]any{"no_id": true}, map[string]any{"id": "C2"}, map[string]any{"id": "C3"},
@@ -291,6 +322,13 @@ func TestResolveName(t *testing.T) {
 			map[string]any{"user": map[string]any{"profile": map[string]any{"display_name": "alice", "real_name": "Alice A"}}}, "alice"},
 		{"DM falls back to the real name", map[string]any{"channel": map[string]any{"is_im": true, "user": "U123456789"}},
 			map[string]any{"user": map[string]any{"profile": map[string]any{"display_name": "", "real_name": "Alice A"}}}, "Alice A"},
+		{"channel with only a normalized name", map[string]any{"channel": map[string]any{"id": "C123456789", "name_normalized": "general"}}, nil, "general"},
+		{"DM falls back to the user's real name", map[string]any{"channel": map[string]any{"is_im": true, "user": "U123456789"}},
+			map[string]any{"user": map[string]any{"name": "alice", "real_name": "Alice A", "profile": map[string]any{"display_name": ""}}}, "Alice A"},
+		{"DM falls back to the handle", map[string]any{"channel": map[string]any{"is_im": true, "user": "U123456789"}},
+			map[string]any{"user": map[string]any{"name": "alice"}}, "alice"},
+		{"DM with a nameless user", map[string]any{"channel": map[string]any{"is_im": true, "user": "U123456789"}},
+			map[string]any{"user": map[string]any{"id": "U123456789"}}, "C123456789"},
 		{"DM whose user lookup fails", map[string]any{"channel": map[string]any{"is_im": true, "user": "U123456789"}},
 			apiError("user_not_found"), "C123456789"},
 	}
@@ -306,6 +344,42 @@ func TestResolveName(t *testing.T) {
 				t.Errorf("got %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// Unlike ResolveName, LookupName says why there is no name, so that
+// callers can abort on dead credentials and back off on a rate limit.
+func TestLookupNameReportsErrors(t *testing.T) {
+	im := map[string]any{"channel": map[string]any{"is_im": true, "user": "U123456789"}}
+	fail := map[string]func(method string) (map[string]any, error){
+		"auth": func(string) (map[string]any, error) { return apiError("invalid_auth"), nil },
+		"rate limit": func(method string) (map[string]any, error) {
+			return nil, &slackapi.RateLimitError{Method: method, RetryAfter: time.Minute}
+		},
+	}
+	for name, failure := range fail {
+		for _, failing := range []string{"conversations.info", "users.info"} {
+			rec := &recorder{serve: func(method string, _ map[string]any) (map[string]any, error) {
+				if method == failing {
+					return failure(method)
+				}
+				return im, nil
+			}}
+			got, err := LookupName(context.Background(), rec.client(), "D123456789")
+			if got != "" || err == nil || slackapi.IsAuthError(err) != (name == "auth") || enrich.IsRateLimit(err) != (name == "rate limit") {
+				t.Errorf("%s on %s: got %q, %v", name, failing, got, err)
+			}
+			if got := ResolveName(context.Background(), rec.client(), "D123456789"); got != "D123456789" {
+				t.Errorf("ResolveName: %s on %s: got %q", name, failing, got)
+			}
+		}
+	}
+
+	rec := &recorder{serve: func(string, map[string]any) (map[string]any, error) {
+		return map[string]any{"channel": map[string]any{"id": "C123456789"}}, nil
+	}}
+	if got, err := LookupName(context.Background(), rec.client(), "C123456789"); got != "" || err != nil {
+		t.Errorf("nameless channel: got %q, %v", got, err)
 	}
 }
 

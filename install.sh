@@ -43,10 +43,45 @@ download() {
   if have curl; then
     curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL "$url" -o "$dest"
   elif have wget; then
-    wget -q -O "$dest" "$url"
+    wget_https "$url" "$dest"
   else
     die "curl or wget is required"
   fi
+}
+
+# wget_https downloads like the curl call above: over https only, redirects
+# included. wget has no equivalent of --proto-redir (its --https-only is
+# about recursive downloads and lets an https URL redirect to plain http),
+# so redirects are followed here, one at a time, and only to https.
+wget_https() {
+  wget_url=$1
+  wget_dest=$2
+  wget --help 2>&1 | grep -q -e '--max-redirect' ||
+    die "this wget (BusyBox?) cannot be kept from following a redirect to plain http; install curl, or GNU wget"
+  wget_hops=0
+  while :; do
+    case "$wget_url" in
+      https://*) ;;
+      *) die "refusing to download $wget_url: only https is allowed" ;;
+    esac
+    # -S prints the response headers on stderr, even with -q.
+    if wget_headers=$(wget -q -S --max-redirect=0 -O "$wget_dest" "$wget_url" 2>&1); then
+      return 0
+    fi
+    wget_location=$(printf '%s\n' "$wget_headers" |
+      awk 'tolower($1) == "location:" { print $2; exit }' | tr -d '\r')
+    [ -n "$wget_location" ] || return 1
+    case "$wget_location" in
+      /*)
+        # Relative to the host that redirected.
+        wget_host=${wget_url#https://}
+        wget_location="https://${wget_host%%/*}$wget_location"
+        ;;
+    esac
+    wget_hops=$((wget_hops + 1))
+    [ "$wget_hops" -le 10 ] || die "too many redirects downloading $1"
+    wget_url=$wget_location
+  done
 }
 
 sha256_of() {

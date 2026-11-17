@@ -291,7 +291,7 @@ func TestGetDownloadsFiles(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(h.c.downloadsDir, "F1.txt")); string(b) != "my notes" {
 		t.Errorf("downloaded content = %q", b)
 	}
-	if !strings.Contains(h.stderr.String(), "Warning: skipping file F2: Failed to download file (404)") {
+	if !strings.Contains(h.stderr.String(), "Warning: could not download file F2: Failed to download file (404)") {
 		t.Errorf("stderr = %q", h.stderr.String())
 	}
 }
@@ -329,7 +329,14 @@ func TestListThread(t *testing.T) {
 			// channel_id and thread_ts are not repeated on every message.
 			wantJSON(t, h.mustRun(append([]string{"list"}, tt.args...)...), wantThread)
 			calls := h.callsTo("conversations.replies")
-			if len(calls) != 1 || calls[0].params["ts"] != tt.wantTS || calls[0].params["channel"] != testChannel {
+			// Asked about a reply, FetchThread asks again about the root
+			// that the answer names.
+			wantCalls := 1
+			if tt.wantTS != "1770160000.000001" {
+				wantCalls = 2
+			}
+			if len(calls) != wantCalls || calls[0].params["ts"] != tt.wantTS || calls[0].params["channel"] != testChannel ||
+				calls[len(calls)-1].params["ts"] != "1770160000.000001" {
 				t.Errorf("conversations.replies calls = %v", calls)
 			}
 			if len(h.callsTo("conversations.history")) != 0 {
@@ -385,7 +392,11 @@ func TestListHistory(t *testing.T) {
 func TestListHistoryDefaultLimitAndEmptyResult(t *testing.T) {
 	h := newHarness(t)
 	got := h.mustRun("list", testChannel)
-	wantJSON(t, got, `{"channel_id": "C12345678"}`)
+	wantJSON(t, got, `{"channel_id": "C12345678", "messages": []}`)
+	// "messages" is there although empty: jq '.messages[]' must not fail.
+	if want := "{\n  \"channel_id\": \"C12345678\",\n  \"messages\": []\n}\n"; h.stdout.String() != want {
+		t.Errorf("printed %s, want %s", h.stdout, want)
+	}
 	if limit := h.callsTo("conversations.history")[0].params["limit"]; limit != 25 {
 		t.Errorf("limit = %v, want 25", limit)
 	}

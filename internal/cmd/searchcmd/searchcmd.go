@@ -4,6 +4,7 @@ package searchcmd
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -38,7 +39,8 @@ Results are sorted newest first. Message results have channel_id, ts, author,
 content (Markdown), files and permalink; file results have title, mimetype,
 mode, path (the local download) and permalink. A file that could not be
 downloaded keeps its entry, with "error" and a path to a file holding the
-reason.
+reason. The list searched for ("messages", "files", or both for "search all")
+is always present: it is [] when nothing matches.
 
 There are two ways of searching:
 
@@ -77,7 +79,15 @@ func newKind(rt *clictx.Context, kind search.Kind, short, detail string) *cobra.
 channels scanned; it may be "" when a filter (--user, --after, --before,
 --channel) is given. See the help of the parent command for the output, the
 two ways of searching and how to get more results than --limit.`,
-		Args: cobra.ExactArgs(1),
+		Args: func(cmd *cobra.Command, args []string) error {
+			// "--channel a b" reads as a second channel, but b is a
+			// second positional argument.
+			if len(args) > 1 && cmd.Flags().Changed("channel") {
+				return fmt.Errorf("%q takes one <query>, got %d arguments (%s): to search several channels repeat --channel or use --channel a,b; quote a query of several words",
+					cmd.CommandPath(), len(args), quoteAll(args))
+			}
+			return cobra.ExactArgs(1)(cmd, args)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(cmd.Context(), rt, kind, args[0], f)
 		},
@@ -151,5 +161,21 @@ func run(ctx context.Context, rt *clictx.Context, kind search.Kind, query string
 	for _, w := range result.Warnings {
 		rt.Hintf("Warning: %s", w)
 	}
-	return rt.Print(result)
+	// The lists this kind of search is about are printed even when empty.
+	var lists []string
+	if kind != search.KindFiles {
+		lists = append(lists, "messages")
+	}
+	if kind != search.KindMessages {
+		lists = append(lists, "files")
+	}
+	return cmdutil.PrintList(rt, result, lists...)
+}
+
+func quoteAll(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = fmt.Sprintf("%q", a)
+	}
+	return strings.Join(quoted, " ")
 }

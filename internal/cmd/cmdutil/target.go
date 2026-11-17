@@ -1,7 +1,7 @@
 // Package cmdutil holds what the command packages share: turning a
 // <target> argument and the --workspace/--ts flags into a workspace, a
-// conversation and a message; flag validation; and free-text arguments
-// that start with a dash.
+// conversation and a message; flag validation; free-text arguments that
+// start with a dash; and printing the result of a list command.
 package cmdutil
 
 import (
@@ -184,6 +184,26 @@ func (t Target) ReplyThreadTS(ctx context.Context, client *slackapi.Client) (str
 		return "", err
 	}
 	return cmp.Or(msg.ThreadTS, msg.TS), nil
+}
+
+// ThreadTS returns the thread a message written to the target goes to,
+// given the (validated) value of --thread-ts: the flag for a channel or
+// user target, and the thread of the linked message (ReplyThreadTS) for a
+// message URL. As with --ts and --workspace, the flag may repeat what the
+// URL designates but not contradict it: replying somewhere other than
+// where the URL points is worse than an error.
+func (t Target) ThreadTS(ctx context.Context, client *slackapi.Client, threadTSFlag string) (string, error) {
+	if t.Kind != slackurl.TargetURL {
+		return threadTSFlag, nil
+	}
+	threadTS, err := t.ReplyThreadTS(ctx, client)
+	if err != nil {
+		return "", err
+	}
+	if threadTSFlag != "" && threadTSFlag != threadTS {
+		return "", fmt.Errorf("--thread-ts %s contradicts the message URL, whose thread is %s: drop --thread-ts (a message URL already says which thread to reply in), or pass the channel instead of the URL", threadTSFlag, threadTS)
+	}
+	return threadTS, nil
 }
 
 // Located is a target resolved against Slack.

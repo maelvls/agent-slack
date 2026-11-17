@@ -33,9 +33,9 @@ entire canvas. Flags an operation does not list are rejected.
 
 ` + canvasArgHelp + `
 
-Editing requires a standard Slack token (SLACK_TOKEN) with the canvases:write
-scope; imported browser credentials can create standalone canvases but
-cannot edit. Prints {"ok": true, "canvas": {"id", "operation"}} once Slack
+Editing requires a standard Slack token (xoxb-/xoxp-, from SLACK_TOKEN or
+saved with "auth add") with the canvases:write scope; imported browser
+credentials can create standalone canvases but cannot edit. Prints {"ok": true, "canvas": {"id", "operation"}} once Slack
 has accepted the change. This is a write action: it is blocked in safe mode.`,
 		Example: `  canvas edit F12345678 --file ./revised-plan.md
   canvas edit F12345678 --operation insert_at_end --markdown "- [ ] One more thing"

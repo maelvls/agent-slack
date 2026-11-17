@@ -204,7 +204,7 @@ slackcli message draft create "#general" "Here's my update" --attach ./q3.png
 slackcli message draft list
 ```
 
-`message compose` waits for the human (no timeout) and prints what was sent (`ts`, `permalink`, `text`) or `{ok, cancelled, reason}`. The editor only works from a real browser session: when no browser can be opened, the command prints a one-time link only if stderr is an interactive terminal, and fails otherwise. When the `CI` environment variable is set, the editor is skipped and the supplied text is sent immediately (except in safe mode, where the command fails).
+`message compose` waits for the human (no timeout) and prints what was sent (`ts`, `permalink`, `text`) or `{ok, cancelled, reason}`. The editor only works from a real browser session: when no browser can be opened, the command prints a one-time link only if stderr is an interactive terminal, and fails otherwise; in safe mode it always fails and never prints the link. With a message URL target, `--thread-ts` is redundant: it may repeat the thread of that message but not name another one (`message send` applies the same rule). When the `CI` environment variable is set, the editor is skipped and the supplied text is sent immediately (except in safe mode, where the command fails).
 
 ### Channels and users
 
@@ -239,7 +239,7 @@ slackcli workflow run Ft0123ABCDEF --channel "#helpdesk"   # starts the workflow
 Skill instructions such as "never send without asking" are guidance an agent can ignore. Safe mode enforces human review in the tool itself:
 
 ```bash
-export SLACKCLI_SAFE_MODE=1                       # 1, true, yes or on
+export SLACKCLI_SAFE_MODE=1                       # anything but empty, 0, false, no or off
 slackcli --safe-mode message send "#general" "hello"
 ```
 
@@ -248,16 +248,16 @@ While safe mode is on:
 | Command | Behaviour |
 | --- | --- |
 | `message send` | Nothing is posted: the compose editor opens with the text for a human to send. The output adds `"safe_mode": true` and `"redirected_from": "send"`. `--attach`, `--blocks`, `--schedule`, `--schedule-in` and `--reply-broadcast` are refused, and so is running under `CI`. |
-| `message compose` | Unchanged, except under `CI`, where it fails instead of sending. |
-| `message edit`, `message delete` | Refused. |
-| `canvas create`, `canvas edit` | Refused. |
-| `workflow run` | Refused. |
+| `message compose` | Unchanged, except that it fails instead of sending under `CI`, and fails when no browser can be opened: the editor link, which lets whoever holds it send, is never printed in safe mode. A human must then run `slackcli message compose` themselves in a graphical session. |
 
-Safe mode does **not** cover `message react add/remove`, `message scheduled cancel`, `message draft`, `channel new/invite/mark`, `later` or `user dm-open`: these still take effect immediately.
+Refused in safe mode: `message edit`, `message delete`, `message scheduled cancel`, `canvas create`, `canvas edit`, `workflow run`, `channel new` and `channel invite`.
+
+Not covered by safe mode: `message react`, `message draft *`, `channel mark`, `later *` and `user dm-open` (the asterisk stands for every subcommand). These only change your own state (a reaction, an unposted draft, a read marker, the saved-for-later list, an open DM) and still take effect immediately.
 
 ## Output conventions
 
 - Results are JSON on stdout, indented with two spaces, with `null`, blank strings, empty arrays and empty objects removed. Hints and warnings go to stderr.
+- The collection a list command is about is the exception: it is always present, `[]` when empty (`messages`, `files`, `channels`, `users`, `items`, `workflows`, `drafts`, `scheduled_messages`).
 - Some `auth` commands (`add`, `set-default`, `remove`, `import-chrome`, `import-brave`, `import-firefox`, `parse-curl`) print a line of text instead.
 - Messages are compact: `channel_id`, `ts`, `thread_ts`, `author` (`user_id` or `bot_id`), `content` (Markdown), `files`, `reactions`. User IDs are kept as is; `--resolve-users` adds their profiles under `referenced_users`.
 - Long content is cut at `--max-body-chars` / `--max-content-chars`; lists are paged with `--limit` and `--cursor` (`next_cursor` in the output).
@@ -270,8 +270,8 @@ Safe mode does **not** cover `message react add/remove`, `message scheduled canc
 | `SLACK_TOKEN` | Token used instead of the saved workspaces (`xoxb-`, `xoxp-`, or `xoxc-`). |
 | `SLACK_COOKIE_D` | The browser `d` cookie (`xoxd-...`), required when `SLACK_TOKEN` is an `xoxc-` token. `SLACK_COOKIE` is read as a fallback. |
 | `SLACK_WORKSPACE_URL` | Default for `--workspace`. |
-| `SLACKCLI_SAFE_MODE` | `1`, `true`, `yes` or `on` turns safe mode on. |
-| `SLACKCLI_COMMAND_TIMEOUT_MS` | Time limit of a whole command (default 30000). Does not apply to `message compose` or `update`. |
+| `SLACKCLI_SAFE_MODE` | Any value other than empty, `0`, `false`, `no` or `off` turns safe mode on (it fails closed: an unrecognised value means on). |
+| `SLACKCLI_COMMAND_TIMEOUT_MS` | Time limit of a whole command (default 30000). Does not apply to `message compose`, `update`, or the commands that upload files (`message send --attach`, `message draft create`, `message draft update`). |
 | `SLACKCLI_API_TIMEOUT_MS` | Time limit of one Slack API request (default 20000). |
 | `SLACKCLI_RATE_LIMIT_MAX_WAIT_MS` | How long to wait and retry when Slack rate-limits a request (default 0: fail at once). |
 | `SLACKCLI_KEYCHAIN_TIMEOUT_MS` | Time limit of a macOS keychain call (default 3000). |
@@ -321,7 +321,9 @@ Changed:
 - The binary is `slackcli`; environment variables use the `SLACKCLI_` prefix.
 - Distribution: release binaries, `install.sh` and `go install` only. There is no npm package and no Nix flake any more.
 - Downloads and caches moved from `~/.agent-slack` to the OS cache directory (see [Files and locations](#files-and-locations)).
-- Safe mode also blocks `canvas create`, `canvas edit` and `workflow run`.
+- Safe mode also blocks `canvas create`, `canvas edit`, `workflow run`, `channel new`, `channel invite` and `message scheduled cancel`, and never prints the compose editor link.
+- `message send <message-url> --thread-ts` and `message compose <message-url> --thread-ts` accept the thread the URL designates and refuse another one.
+- List commands always print their collection, `[]` when empty. `--limit` of `message draft list` and `message scheduled list` is an integer flag like the others.
 - `message send --attach a --attach b` posts one message with all the files. Message text may start with `- `.
 - `message list --limit` goes up to 1000; a thread listing rejects history-only flags (`--limit`, `--oldest`, `--latest`, reaction filters). Numeric flags are validated everywhere.
 - `search --channel` is repeatable or comma-separated (not space-separated); `--after`/`--before` are exclusive; `--no-download` is new; `more_messages`/`more_files` say how to continue. `search files` keeps files whose download failed, with an `error`.

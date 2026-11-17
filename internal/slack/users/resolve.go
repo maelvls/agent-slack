@@ -55,10 +55,15 @@ func (e *AmbiguousError) Error() string {
 //   - an email address: one users.lookupByEmail call;
 //   - a handle, with or without "@": one search.messages "from:@handle"
 //     call, which finds anybody who posted a message the caller can see
-//     (user and browser tokens only);
+//     (user and browser tokens only), confirmed by one users.info call:
+//     the author of the message must really have that handle;
 //   - failing that, a handle or the exact display name or real name of a
 //     single member: a scan of the user directory (users.list), which is
 //     slow in large workspaces and gets rate limited in huge ones.
+//
+// The directory scan is also the last resort for an email address that
+// users.lookupByEmail does not know (or may not look up): Slack only looks
+// active members up by email, a deactivated one is found by the scan.
 //
 // Matching is case-insensitive, and active members win over deactivated
 // ones. The error is a *NotFoundError when nobody matches and an
@@ -117,6 +122,10 @@ type want struct {
 	input  string // as given, for errors
 	handle string // lower-cased, without "@"
 	email  string // lower-cased; "" unless the input is an email address
+	// deactivated is set when users.lookupByEmail knows no member with
+	// that email: only a deactivated member can still have it, so the
+	// scan may stop at the first one found.
+	deactivated bool
 
 	active   map[string]any   // handle or email match
 	inactive map[string]any   // same, but a deactivated member
@@ -147,7 +156,7 @@ func lookup(ctx context.Context, client *slackapi.Client, inputs []string) ([]fo
 	var wants []*want
 	// searched remembers the outcome per handle, so that a handle given
 	// twice costs one search.
-	searched := map[string]string{}
+	searched := map[string]map[string]any{}
 	for i, input := range inputs {
 		trimmed := strings.TrimSpace(input)
 		if trimmed == "" {
@@ -167,10 +176,9 @@ func lookup(ctx context.Context, client *slackapi.Client, inputs []string) ([]fo
 				out[i] = found{id: jsonx.Str(user["id"]), raw: user}
 				continue
 			case slackapi.IsErrorCode(err, "users_not_found"):
-				// Slack's answer is authoritative: scanning the whole
-				// directory would only find the same nothing, slowly.
-				out[i].err = &NotFoundError{Input: input}
-				continue
+				// No active member has that address. A deactivated one
+				// may: the directory is the only place to find them.
+				w.deactivated = true
 			case isFatal(ctx, err):
 				return nil, fmt.Errorf("looking up user %s: %w", trimmed, err)
 			}
@@ -182,21 +190,21 @@ func lookup(ctx context.Context, client *slackapi.Client, inputs []string) ([]fo
 			continue
 		}
 		if w.email == "" && canSearch(client, w.handle) {
-			id, done := searched[w.handle]
+			user, done := searched[w.handle]
 			if !done {
 				var err error
-				id, err = searchByHandle(ctx, client, w.handle)
+				user, err = searchByHandle(ctx, client, w.handle)
 				if err != nil && (ctx.Err() != nil || slackapi.IsAuthError(err)) {
 					return nil, fmt.Errorf("looking up user @%s: %w", w.handle, err)
 				}
-				// Any other search failure (missing search:read scope,
-				// rate limit on the search tier …) leaves the directory
-				// to look at. So does finding nothing: somebody who
-				// never posted is invisible to search.
-				searched[w.handle] = id
+				// Any other failure (missing search:read scope, rate limit
+				// on the search tier, users.info refused …) leaves the
+				// directory to look at. So does finding nothing: somebody
+				// who never posted is invisible to search.
+				searched[w.handle] = user
 			}
-			if id != "" {
-				out[i].id = id
+			if user != nil {
+				out[i] = found{id: jsonx.Str(user["id"]), raw: user}
 				continue
 			}
 		}
@@ -257,8 +265,15 @@ const searchResults = 5
 
 // searchByHandle finds a user through the messages they posted: Slack has
 // no handle→ID lookup, and the user directory of a large workspace cannot
-// be paged through. It returns "" when no message is from that handle.
-func searchByHandle(ctx context.Context, client *slackapi.Client, handle string) (string, error) {
+// be paged through. It returns the user (as users.info gives it), or nil
+// when no message is from that handle.
+//
+// The ID it returns ends up being DMed, invited or searched for, so a
+// match is not taken at its word. Integrations post under any `username`
+// they like: their messages (those with a bot_id or a subtype) are
+// ignored. And the author of the first remaining match is confirmed with
+// one users.info call, whose `name` must be the handle.
+func searchByHandle(ctx context.Context, client *slackapi.Client, handle string) (map[string]any, error) {
 	resp, err := client.API(ctx, "search.messages", map[string]any{
 		"query":    "from:@" + handle,
 		"count":    searchResults,
@@ -266,20 +281,36 @@ func searchByHandle(ctx context.Context, client *slackapi.Client, handle string)
 		"sort_dir": "desc",
 	})
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	candidate := ""
 	for _, m := range jsonx.Maps(jsonx.Get(resp, "messages", "matches")) {
-		// Only trust a message whose author has exactly that handle:
+		if jsonx.Str(m["bot_id"]) != "" || jsonx.Str(m["subtype"]) != "" {
+			continue
+		}
 		// "from:" also matches display names and similar handles.
 		if id := jsonx.Str(m["user"]); slackid.IsUserID(id) && strings.EqualFold(jsonx.Str(m["username"]), handle) {
-			return id, nil
+			candidate = id
+			break
 		}
 	}
-	return "", nil
+	if candidate == "" {
+		return nil, nil
+	}
+	resp, err = client.API(ctx, "users.info", map[string]any{"user": candidate})
+	if err != nil {
+		return nil, err
+	}
+	user := jsonx.Map(resp["user"])
+	if jsonx.Str(user["id"]) != candidate || !strings.EqualFold(jsonx.Str(user["name"]), handle) {
+		return nil, nil
+	}
+	return user, nil
 }
 
 // scanDirectory pages through users.list filling in wants, and stops as
-// soon as each of them has an active handle (or email) match.
+// soon as each of them has an active handle (or email) match, or, for an
+// email that no active member has, a deactivated one.
 func scanDirectory(ctx context.Context, client *slackapi.Client, wants []*want) error {
 	cursor := ""
 	for {
@@ -301,7 +332,7 @@ func scanDirectory(ctx context.Context, client *slackapi.Client, wants []*want) 
 		}
 		done := true
 		for _, w := range wants {
-			done = done && w.active != nil
+			done = done && (w.active != nil || w.deactivated && w.inactive != nil)
 		}
 		next := nextCursor(resp)
 		if done || next == "" || next == cursor {
@@ -320,10 +351,19 @@ func scanError(err error, wants []*want) error {
 		return fmt.Errorf("searching the user directory: %w", err)
 	}
 	var missing []string
+	onlyEmails := true
 	for _, w := range wants {
 		if w.active == nil {
 			missing = append(missing, strconv.Quote(w.input))
+			onlyEmails = onlyEmails && w.deactivated
 		}
+	}
+	if onlyEmails && len(missing) > 0 {
+		return fmt.Errorf("could not resolve user %s: no active member of this workspace has that email address (users.lookupByEmail), "+
+			"and looking for a deactivated one takes a scan of the user directory, which this workspace is too large for (users.list was rate limited). "+
+			"Pass the user ID (U…) instead. "+
+			"Setting %s to a large value makes the scan wait and carry on, which can take very long: %w",
+			strings.Join(missing, ", "), appinfo.EnvName("RATE_LIMIT_MAX_WAIT_MS"), err)
 	}
 	return fmt.Errorf("could not resolve user %s: this workspace is too large to scan its user directory (users.list was rate limited). "+
 		"Pass the user ID (U…) or the email address instead: a handle is only found without a scan when it is the exact @handle of somebody who posted a message you can see. "+

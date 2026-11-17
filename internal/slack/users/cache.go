@@ -15,6 +15,7 @@ import (
 
 	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/jsonx"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slackapi"
 	"github.com/maelvls/slackcli/internal/slackid"
 )
@@ -72,7 +73,10 @@ func (e cacheEntry) fresh(now time.Time) bool {
 // or write it is never an error.
 //
 // The error is non-nil only when the lookup must be abandoned: cancelled
-// context, expired credentials, rate limit.
+// context or expired credentials. Resolving users is an enrichment (see
+// package enrich): when users.info is rate limited, no further user is
+// asked for, the ones already known are returned without error, and the
+// collector of ctx ([enrich.Collect]) is told how many are missing.
 func ResolveByID(ctx context.Context, client *slackapi.Client, userIDs []string, opts ResolveOptions) (map[string]CompactUser, error) {
 	ids := dedupeUserIDs(userIDs)
 	out := make(map[string]CompactUser, len(ids))
@@ -99,7 +103,8 @@ func ResolveByID(ctx context.Context, client *slackapi.Client, userIDs []string,
 		return out, nil
 	}
 
-	fetched, err := fetchUsers(ctx, client, missing)
+	var limited enrich.Gate
+	fetched, err := fetchUsers(ctx, client, missing, &limited)
 	for id, user := range fetched {
 		out[id] = user
 	}
@@ -108,12 +113,25 @@ func ResolveByID(ctx context.Context, client *slackapi.Client, userIDs []string,
 	if err != nil {
 		return nil, err
 	}
+	if skipped, rateLimit := limited.Skipped(); skipped > 0 {
+		// A stale entry beats a bare ID.
+		for _, id := range missing {
+			if e, ok := cached[id]; ok {
+				if _, fetched := out[id]; !fetched {
+					out[id] = e.User
+				}
+			}
+		}
+		enrich.Warnf(ctx, "%d of the %d users referenced could not be resolved and are left as bare IDs (%v): %s",
+			skipped, len(ids), rateLimit, enrich.Hint())
+	}
 	return out, nil
 }
 
 // fetchUsers looks users up with users.info, a few at a time. Users that
-// cannot be fetched are left out; the error reports a fatal failure only.
-func fetchUsers(ctx context.Context, client *slackapi.Client, ids []string) (map[string]CompactUser, error) {
+// cannot be fetched are left out, and none is asked for once limited has
+// seen a rate limit; the error reports a fatal failure only.
+func fetchUsers(ctx context.Context, client *slackapi.Client, ids []string, limited *enrich.Gate) (map[string]CompactUser, error) {
 	var (
 		mu    sync.Mutex
 		wg    sync.WaitGroup
@@ -128,7 +146,7 @@ func fetchUsers(ctx context.Context, client *slackapi.Client, ids []string) (map
 			mu.Lock()
 			abort := fatal != nil
 			mu.Unlock()
-			if abort {
+			if abort || limited.Closed() {
 				return
 			}
 			resp, err := client.API(ctx, "users.info", map[string]any{"user": id})
@@ -139,8 +157,10 @@ func fetchUsers(ctx context.Context, client *slackapi.Client, ids []string) (map
 				if u := jsonx.Map(resp["user"]); jsonx.Str(u["id"]) != "" {
 					out[id] = ToCompactUser(u)
 				}
-			case isFatal(ctx, err):
+			case enrich.MustAbort(ctx, err):
 				fatal = cmp.Or(fatal, err)
+			default:
+				limited.Failed(err)
 			}
 		})
 	}

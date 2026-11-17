@@ -86,12 +86,18 @@ func TestSameTS(t *testing.T) {
 }
 
 func TestValidateID(t *testing.T) {
-	for _, ok := range []string{"Dr123", "Dr06ABCDEF12", "DrNew"} {
+	for _, ok := range []string{
+		"Dr123", "Dr06ABCDEF12", "DrNew",
+		// Real-looking IDs.
+		"Dr0C98G04RNC", "Dr0B8ML9G7PW",
+		// Anything starting with "D" may be a draft ID: Slack decides.
+		"DR0C98G04RNC", "D0123456789",
+	} {
 		if err := ValidateID(ok); err != nil {
 			t.Errorf("ValidateID(%q) = %v", ok, err)
 		}
 	}
-	for _, bad := range []string{"", "  ", "#general", "C0123456789", "U0123456789", "https://x.slack.com/archives/C1/p1", "Dr 123", "Dr123\n"} {
+	for _, bad := range []string{"", "  ", "#general", "C0123456789", "G0123456789", "U0123456789", "W0123456789", "https://x.slack.com/archives/C1/p1", "Dr 123", "Dr123\n"} {
 		if err := ValidateID(bad); err == nil {
 			t.Errorf("ValidateID(%q) = nil, want an error", bad)
 		}

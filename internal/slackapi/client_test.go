@@ -16,7 +16,7 @@ func browserClient(t *testing.T, h http.HandlerFunc, opts ...Option) *Client {
 	srv := httptest.NewServer(h)
 	t.Cleanup(srv.Close)
 	auth := Auth{Type: AuthBrowser, XoxcToken: "xoxc-test", XoxdCookie: "xoxd-a+b/c"}
-	return New(auth, srv.URL+"/", opts...)
+	return New(auth, srv.URL+"/", append([]Option{WithLoopbackWorkspaceForTesting()}, opts...)...)
 }
 
 func TestBrowserFormCall(t *testing.T) {

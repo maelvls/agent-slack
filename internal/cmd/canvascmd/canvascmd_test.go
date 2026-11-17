@@ -580,6 +580,8 @@ func TestHelpContracts(t *testing.T) {
 	wantContains(t, "create --markdown", flagUsage(t, create, "markdown"), "mutually exclusive")
 	wantContains(t, "create --channel", flagUsage(t, create, "channel"), "canvases:write", "browser auth")
 	wantContains(t, "create help", create.Long, "safe mode")
+	// A standard token works wherever it comes from, not only SLACK_TOKEN.
+	wantContains(t, "create help", create.Long, `from SLACK_TOKEN or saved with "auth add"`)
 	flagUsage(t, create, "title")
 	flagUsage(t, create, "workspace")
 
@@ -590,6 +592,7 @@ func TestHelpContracts(t *testing.T) {
 	wantContains(t, "edit --section-id", flagUsage(t, edit, "section-id"), "required")
 	wantContains(t, "edit --title", flagUsage(t, edit, "title"), "rename")
 	wantContains(t, "edit help", edit.Long, append([]string{"standard Slack token", "canvases:write", "safe mode", "WHOLE canvas"}, canvas.Operations...)...)
+	wantContains(t, "edit help", edit.Long, `from SLACK_TOKEN or`, `saved with "auth add"`)
 	if got := edit.Flags().Lookup("operation").DefValue; got != "replace" {
 		t.Errorf("default --operation = %q, want replace", got)
 	}

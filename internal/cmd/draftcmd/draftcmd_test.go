@@ -15,6 +15,8 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/spf13/cobra"
+
 	"github.com/maelvls/slackcli/internal/auth"
 	"github.com/maelvls/slackcli/internal/authextract"
 	"github.com/maelvls/slackcli/internal/clictx"
@@ -45,6 +47,8 @@ type harness struct {
 	failOnce string
 	// failWith makes every call to a method fail with that error code.
 	failWith map[string]string
+	// onCall, when set, is told of every API call before it is answered.
+	onCall func(method string)
 
 	mu         sync.Mutex
 	calls      []call
@@ -66,6 +70,9 @@ func newHarness(t *testing.T) *harness {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 		h.calls = append(h.calls, call{method, params})
+		if h.onCall != nil {
+			h.onCall(method)
+		}
 		if h.failOnce == method && !h.failedOnce {
 			h.failedOnce = true
 			return map[string]any{"ok": false, "error": "invalid_auth"}, nil
@@ -677,22 +684,39 @@ func TestListFlags(t *testing.T) {
 		t.Errorf("output = %s (err %v), want exactly one draft", out, err)
 	}
 
-	for _, bad := range []string{"abc", "0", "-3", "1.5"} {
+	// --limit is an integer flag, validated like on every other command.
+	for bad, want := range map[string]string{
+		"0":   "invalid --limit value 0: must be a positive integer",
+		"-3":  "invalid --limit value -3: must be a positive integer",
+		"abc": `invalid argument "abc" for "--limit" flag`,
+		"1.5": `invalid argument "1.5" for "--limit" flag`,
+	} {
 		h := newHarness(t)
-		h.mustFail("invalid --limit", "list", "--limit", bad)
+		h.mustFail(want, "list", "--limit", bad)
 		h.wantNoCalls()
 	}
+	if typ := findCommand(t, New(h.rt), "list").Flags().Lookup("limit").Value.Type(); typ != "int" {
+		t.Errorf("--limit is a %s flag, want int", typ)
+	}
+}
+
+func findCommand(t *testing.T, parent *cobra.Command, name string) *cobra.Command {
+	t.Helper()
+	for _, c := range parent.Commands() {
+		if c.Name() == name {
+			return c
+		}
+	}
+	t.Fatalf("no %q subcommand", name)
+	return nil
 }
 
 func TestListWithNoDrafts(t *testing.T) {
 	h := newHarness(t)
 	out := h.mustRun("list")
-	var parsed map[string]any
-	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
-		t.Fatal(err)
-	}
-	if parsed["ok"] != true || parsed["count"] != float64(0) {
-		t.Errorf("output = %s, want ok and an explicit count of 0", out)
+	// "drafts" is present although empty: jq '.drafts[]' must not fail.
+	if want := "{\n  \"ok\": true,\n  \"drafts\": [],\n  \"count\": 0\n}\n"; out != want {
+		t.Errorf("output = %s, want %s", out, want)
 	}
 }
 
@@ -728,7 +752,7 @@ func TestHelpContracts(t *testing.T) {
 		return "", nil
 	}
 	createLong, _ := find("create")
-	if !strings.Contains(createLong, "user id") {
+	if !strings.Contains(createLong, "user ID") {
 		t.Errorf("create help does not document DM targeting: %s", createLong)
 	}
 	updateLong, updateFlag := find("update")
@@ -740,6 +764,25 @@ func TestHelpContracts(t *testing.T) {
 	}
 	if !strings.Contains(cmd.Long, "message compose") || !strings.Contains(cmd.Short, "browser auth") {
 		t.Errorf("draft help = %q / %q", cmd.Short, cmd.Long)
+	}
+	// Wrapped like the help of every other command.
+	for _, c := range append(cmd.Commands(), cmd) {
+		for _, line := range strings.Split(c.Long, "\n") {
+			if len([]rune(line)) > 80 {
+				t.Errorf("%s: Long is not wrapped: %q", c.Name(), line)
+			}
+		}
+	}
+}
+
+// Uploads can outlast the command timeout, and being killed between the
+// upload and drafts.create would orphan the uploaded files.
+func TestCommandsThatUploadHaveNoTimeout(t *testing.T) {
+	cmd := New(newHarness(t).rt)
+	for name, want := range map[string]bool{"create": true, "update": true, "list": false, "delete": false} {
+		if got := clictx.HasNoTimeout(findCommand(t, cmd, name)); got != want {
+			t.Errorf("draft %s: exempt from the command timeout = %v, want %v", name, got, want)
+		}
 	}
 }
 
@@ -833,6 +876,27 @@ func TestFailedDraftDeletesItsUploads(t *testing.T) {
 		}
 		if got := h.only("files.delete").params["file"]; got != "F-c.txt" {
 			t.Errorf("deleted %v, want F-c.txt", got)
+		}
+	})
+	t.Run("interrupted after the upload", func(t *testing.T) {
+		h := newHarness(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		h.onCall = func(method string) {
+			if method == "drafts.create" {
+				cancel() // Ctrl-C while the draft is being created
+			}
+		}
+		h.failWith = map[string]string{"drafts.create": "fatal_error"}
+		cmd := New(h.rt)
+		cmd.SilenceUsage, cmd.SilenceErrors = true, true
+		cmd.SetOut(io.Discard)
+		cmd.SetErr(io.Discard)
+		cmd.SetArgs([]string{"create", "C11111111", "see attached", "--attach", writeFile(t, "a.png", "x")})
+		if err := cmd.ExecuteContext(ctx); err == nil {
+			t.Fatal("the interrupted create succeeded")
+		}
+		if got := h.only("files.delete").params["file"]; got != "F-a.png" {
+			t.Errorf("deleted %v, want F-a.png", got)
 		}
 	})
 	t.Run("nothing to delete without attachments", func(t *testing.T) {

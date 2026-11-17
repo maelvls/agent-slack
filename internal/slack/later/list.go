@@ -10,6 +10,7 @@ import (
 
 	"github.com/maelvls/slackcli/internal/jsonx"
 	"github.com/maelvls/slackcli/internal/slack/channels"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slack/slacktext"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
@@ -107,7 +108,8 @@ type Item struct {
 	DateCompleted int64 `json:"date_completed,omitempty"`
 	DateDue       int64 `json:"date_due,omitempty"`
 	// Message is nil when the message could not be fetched; MessageError
-	// then says why ("message_not_found", or Slack's error code).
+	// then says why ("message_not_found", or Slack's error code:
+	// "ratelimited" when Slack was rate limiting, see ListResult.Warnings).
 	Message      *Message `json:"message,omitempty"`
 	MessageError string   `json:"message_error,omitempty"`
 }
@@ -121,6 +123,10 @@ type ListResult struct {
 	// NextCursor is set when there may be more items: pass it as
 	// ListOptions.Cursor to continue right after the last item returned.
 	NextCursor string `json:"next_cursor,omitempty"`
+	// Warnings say what is missing from Items because Slack rate limited
+	// the lookups (channel names, messages), for the caller to show on
+	// stderr.
+	Warnings []string `json:"-"`
 }
 
 // encodeCursor builds the cursor that resumes offset items into the
@@ -153,7 +159,11 @@ func decodeCursor(cursor string) (slackCursor string, offset int, err error) {
 // are skipped.
 //
 // A message that cannot be fetched (deleted, channel no longer visible) is
-// still listed, with Item.MessageError set.
+// still listed, with Item.MessageError set. Names and messages are
+// enrichments (see package enrich): once Slack rate limits one kind of
+// lookup no more of that kind are made, the items concerned come without
+// a channel name or with MessageError "ratelimited", and
+// ListResult.Warnings says so.
 func List(ctx context.Context, client *slackapi.Client, opts ListOptions) (ListResult, error) {
 	if err := requireBrowser(client); err != nil {
 		return ListResult{}, err
@@ -223,7 +233,7 @@ paging:
 		slackCursor, offset = next, 0
 	}
 
-	result.Items, err = hydrate(ctx, client, raw, opts.MaxBodyChars)
+	result.Items, result.Warnings, err = hydrate(ctx, client, raw, opts.MaxBodyChars)
 	if err != nil {
 		return ListResult{}, err
 	}
@@ -269,7 +279,7 @@ func unixSeconds(v any) int64 {
 
 // hydrate turns raw saved items into Items, resolving each channel name
 // once and fetching each message, with bounded concurrency.
-func hydrate(ctx context.Context, client *slackapi.Client, raw []map[string]any, maxBodyChars int) ([]Item, error) {
+func hydrate(ctx context.Context, client *slackapi.Client, raw []map[string]any, maxBodyChars int) ([]Item, []string, error) {
 	if maxBodyChars == 0 {
 		maxBodyChars = DefaultMaxBodyChars
 	}
@@ -295,6 +305,7 @@ func hydrate(ctx context.Context, client *slackapi.Client, raw []map[string]any,
 	defer cancel(nil)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, hydrateConcurrency)
+	var namesLimited, messagesLimited enrich.Gate
 	run := func(task func()) {
 		wg.Go(func() {
 			sem <- struct{}{}
@@ -306,9 +317,17 @@ func hydrate(ctx context.Context, client *slackapi.Client, raw []map[string]any,
 	}
 	for _, id := range channelIDs {
 		run(func() {
-			// ResolveName answers the ID itself when it finds no name.
-			if name := channels.ResolveName(ctx, client, id); name != id {
+			if namesLimited.Closed() {
+				return
+			}
+			name, err := channels.LookupName(ctx, client, id)
+			switch {
+			case err == nil:
 				*names[id] = name
+			case enrich.MustAbort(ctx, err):
+				cancel(fmt.Errorf("looking up the name of %s: %w", id, err))
+			default:
+				namesLimited.Failed(err)
 			}
 		})
 	}
@@ -318,27 +337,44 @@ func hydrate(ctx context.Context, client *slackapi.Client, raw []map[string]any,
 			continue
 		}
 		run(func() {
+			if messagesLimited.Closed() {
+				item.MessageError = enrich.RateLimitedCode
+				return
+			}
 			msg, err := fetchMessage(ctx, client, item.ChannelID, item.TS)
 			switch {
-			case isFatal(ctx, err):
-				cancel(fmt.Errorf("fetching saved message %s in %s: %w", item.TS, item.ChannelID, err))
-			case err != nil:
-				item.MessageError = messageErrorCode(err)
-			default:
+			case err == nil:
 				item.Message = toMessage(msg, maxBodyChars)
+			case enrich.MustAbort(ctx, err):
+				cancel(fmt.Errorf("fetching saved message %s in %s: %w", item.TS, item.ChannelID, err))
+			case messagesLimited.Failed(err):
+				item.MessageError = enrich.RateLimitedCode
+			default:
+				item.MessageError = messageErrorCode(err)
 			}
 		})
 	}
 	wg.Wait()
 	if err := context.Cause(ctx); err != nil {
-		return nil, err
+		return nil, nil, err
+	}
+	var warnings []string
+	if n, err := messagesLimited.Skipped(); n > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			`%d of %d saved messages were not fetched (%v): they are listed with "message_error": %q; %s`,
+			n, len(items), err, enrich.RateLimitedCode, enrich.Hint()))
+	}
+	if n, err := namesLimited.Skipped(); n > 0 {
+		warnings = append(warnings, fmt.Sprintf(
+			"the names of %d of %d channels were not looked up (%v): their items come with the channel ID only; %s",
+			n, len(channelIDs), err, enrich.Hint()))
 	}
 	for i := range items {
 		if name := names[items[i].ChannelID]; name != nil {
 			items[i].ChannelName = *name
 		}
 	}
-	return items, nil
+	return items, warnings, nil
 }
 
 var errMessageNotFound = errors.New("message_not_found")
@@ -366,7 +402,8 @@ func fetchMessage(ctx context.Context, client *slackapi.Client, channelID, ts st
 	// conversations.replies accepts the ts of any message of a thread and
 	// returns that message first.
 	resp, err = client.API(ctx, "conversations.replies", map[string]any{"channel": channelID, "ts": ts, "limit": 1})
-	if isFatal(ctx, err) {
+	// Any other failure (thread_not_found …) means there is no such reply.
+	if enrich.MustAbort(ctx, err) || enrich.IsRateLimit(err) {
 		return nil, err
 	}
 	if m := findTS(resp, ts); m != nil {

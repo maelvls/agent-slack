@@ -56,6 +56,8 @@ func (c *command) newSend() *cobra.Command {
   a Slack message URL       reply in the thread of that message
   #name, name, channel ID   post to that channel (reply with --thread-ts)
   a user ID (U…/W…)         post to the direct message with that user
+With a message URL, --thread-ts is redundant: it may repeat the thread of
+that message but not name another one.
 
 [text] is Slack mrkdwn: *bold*, _italic_, `+"`code`"+`, <https://example.com|label>,
 <@U123> or @U123 mentions, @here/@channel. Bullet and numbered lists are sent
@@ -65,10 +67,13 @@ Prints {ok, channel_id, ts, thread_ts, permalink}; with --schedule/--schedule-in
 {ok, channel_id, scheduled_message_id, post_at, thread_ts}; with --attach
 {ok, channel_id, thread_ts, files}.
 
+With --attach the command does not time out: uploads can be long.
+
 In safe mode (--safe-mode or %[1]s=1) nothing is posted: the compose editor
 opens with the text for a human to review and send. --attach, --blocks,
 --schedule, --schedule-in and --reply-broadcast are refused in safe mode, and
-so is running in CI, where no editor can open.`, appinfo.EnvName("SAFE_MODE")),
+so is running in CI or without a browser, where no editor can open: the
+editor's link is never printed in safe mode.`, appinfo.EnvName("SAFE_MODE")),
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			text := ""
@@ -80,7 +85,7 @@ so is running in CI, where no editor can open.`, appinfo.EnvName("SAFE_MODE")),
 	}
 	cmdutil.AddTargetWorkspaceFlag(cmd, &opts.workspace)
 	f := cmd.Flags()
-	f.StringVar(&opts.threadTS, "thread-ts", "", "Thread root ts to reply to, for channel targets and user-ID targets; refused with a message URL target, which already says which thread to reply in")
+	f.StringVar(&opts.threadTS, "thread-ts", "", "Thread root ts to reply to, for channel targets and user-ID targets; redundant with a message URL target, which already says which thread to reply in and which it must not contradict")
 	f.BoolVar(&opts.replyBroadcast, "reply-broadcast", false, "Also show this thread reply in the channel (requires --thread-ts for channel targets; a message URL target supplies the thread; not supported for user-ID/DM targets; cannot be combined with --attach)")
 	f.StringArrayVar(&opts.attach, "attach", nil, "Attach a local file (repeatable; all files go in one message); [text] becomes the files' comment, sent as plain mrkdwn without automatic list conversion. Cannot be combined with --blocks, --schedule, --schedule-in, --reply-broadcast or --no-unfurl")
 	f.StringVar(&opts.blocks, "blocks", "", blocksUsage+". Cannot be combined with --attach")
@@ -148,9 +153,8 @@ func (c *command) runSend(cmd *cobra.Command, targetInput, text string, opts sen
 	}
 	switch target.Kind {
 	case slackurl.TargetURL:
-		if threadTS != "" {
-			return errors.New("--thread-ts cannot be combined with a message URL target: the reply goes to the thread of that message. Drop --thread-ts, or pass the channel instead of the URL")
-		}
+		// The thread is the URL's; --thread-ts is checked against it once
+		// the message has been fetched (Target.ThreadTS).
 	case slackurl.TargetUser:
 		if opts.replyBroadcast {
 			return errors.New("--reply-broadcast is not supported for DM targets")
@@ -186,16 +190,19 @@ func (c *command) runSend(cmd *cobra.Command, targetInput, text string, opts sen
 	} else if text != "" {
 		msg.blocks = slacktext.TextToRichTextBlocks(text)
 	}
+	if hasAttach {
+		// An upload may take longer than the command timeout; its calls
+		// have their own.
+		c.rt.DisableTimeout()
+	}
 
 	result, err := cmdutil.WithTarget(ctx, c.rt, target, func(loc cmdutil.Located) (sendResult, error) {
 		msg := msg
-		if target.Kind == slackurl.TargetURL {
-			// Reply in the thread the linked message belongs to (or start
-			// one under it).
-			var err error
-			if msg.threadTS, err = target.ReplyThreadTS(ctx, loc.Client); err != nil {
-				return sendResult{}, err
-			}
+		// A message URL replies in the thread the linked message belongs
+		// to (or starts one under it); --thread-ts may only repeat it.
+		var err error
+		if msg.threadTS, err = target.ThreadTS(ctx, loc.Client, threadTS); err != nil {
+			return sendResult{}, err
 		}
 		return c.sendToChannel(ctx, loc, msg)
 	})

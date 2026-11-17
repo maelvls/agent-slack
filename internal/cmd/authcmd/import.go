@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -41,21 +42,54 @@ func runImport(ctx context.Context, rt *clictx.Context, source, advice string, e
 		return nil, nil, fmt.Errorf("could not import from %s: %w", source, err)
 	}
 
-	var imported []importedWorkspace
+	var found []importedWorkspace
 	for _, team := range extracted.Teams {
 		// Same filter as Context.Import: only what is actually saved
 		// is reported.
 		if u, err := auth.NormalizeURL(team.URL); err == nil && team.Token != "" && extracted.CookieD != "" {
-			imported = append(imported, importedWorkspace{WorkspaceURL: u, WorkspaceName: team.Name})
+			found = append(found, importedWorkspace{WorkspaceURL: u, WorkspaceName: team.Name})
 		}
 	}
-	if len(imported) == 0 {
+	if len(found) == 0 {
 		return nil, nil, fmt.Errorf("could not import from %s: the credentials found are incomplete. %s", source, advice)
 	}
-	if err := rt.Import(extracted); err != nil {
+	// An import covers every workspace the application is signed in to, so
+	// it does not replace a standard token saved on purpose for one of
+	// them: that would change who commands act as.
+	kept, err := rt.Import(extracted, false)
+	if err != nil {
 		return nil, nil, fmt.Errorf("saving the credentials imported from %s: %w", source, err)
 	}
+	imported := make([]importedWorkspace, 0, len(found))
+	for _, w := range found {
+		if !slices.Contains(kept, w.WorkspaceURL) {
+			imported = append(imported, w)
+		}
+	}
+	for _, u := range kept {
+		rt.Hintf(`note: %[1]s keeps its standard token (saved with "auth add"); the browser session found in %[2]s was not imported for it. To use the browser session instead, run "%[3]s auth remove %[1]s" and import again`,
+			u, source, appinfo.Name)
+	}
+	hintNoDefault(rt)
 	return extracted, imported, nil
+}
+
+// hintNoDefault tells the user, after credentials were saved, that several
+// workspaces are configured and none is the default.
+func hintNoDefault(rt *clictx.Context) {
+	if advice := noDefaultAdvice(rt); advice != "" {
+		rt.Hintf("note: %s", advice)
+	}
+}
+
+// noDefaultAdvice says how to choose a workspace when several are
+// configured and none is the default; it is "" otherwise.
+func noDefaultAdvice(rt *clictx.Context) string {
+	creds, err := rt.Store.Load()
+	if err != nil || len(creds.Workspaces) <= 1 || creds.Default() != nil {
+		return ""
+	}
+	return fmt.Sprintf(`no default workspace is set: commands need --workspace "<url-or-unique-substring>" (or SLACK_WORKSPACE_URL) until you choose one with "%s auth set-default <url>"`, appinfo.Name)
 }
 
 func printImported(rt *clictx.Context, n int, source string) error {
@@ -73,6 +107,11 @@ Windows). Slack does not need to be quit, and nothing is modified.
 
 On macOS the cookie is decrypted with the "Slack Safe Storage" keychain item:
 macOS may ask for permission the first time.
+
+A workspace saved with a standard token ("auth add") keeps it: it is skipped,
+with a note on stderr. When several workspaces are imported at once and none
+was configured before, no default workspace is set: choose one with
+"auth set-default", or pass --workspace to every command.
 
 Prints the number of imported workspaces, their URLs and the files read.`,
 		Args: cobra.NoArgs,
@@ -189,9 +228,12 @@ in the process list or the shell history.`, appinfo.Name),
 			if err != nil {
 				return err
 			}
-			if err := rt.Import(parsed); err != nil {
+			// The request was copied from that very workspace: its
+			// credentials replace whatever was saved for it.
+			if _, err := rt.Import(parsed, true); err != nil {
 				return err
 			}
+			hintNoDefault(rt)
 			_, err = fmt.Fprintf(rt.Stdout, "Imported tokens for %s.\n", parsed.Teams[0].URL)
 			return err
 		},

@@ -193,6 +193,17 @@ func TestListPrintsBookmarkedAndFeaturedWorkflows(t *testing.T) {
 
 // The TypeScript version silently listed fewer workflows when the
 // featured lookup failed.
+// "workflows" is printed even when the channel has none.
+func TestListWithNoWorkflows(t *testing.T) {
+	h := newHarness(t)
+	h.responses["bookmarks.list"] = map[string]any{"ok": true, "bookmarks": []any{}}
+	h.responses["workflows.featured.list"] = map[string]any{"ok": true, "featured_workflows": []any{}}
+	h.output("list", "C12345678")
+	if got, want := h.stdout.String(), "{\n  \"channel_id\": \"C12345678\",\n  \"workflows\": []\n}\n"; got != want {
+		t.Errorf("printed %s, want %s", got, want)
+	}
+}
+
 func TestListWarnsWhenFeaturedWorkflowsAreUnavailable(t *testing.T) {
 	h := newHarness(t)
 	h.responses["bookmarks.list"] = bookmarks()

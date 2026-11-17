@@ -48,9 +48,9 @@ see; with --all, every conversation visible to you (conversations.list);
 with --via-counts, your conversations as the Slack client lists them.
 
 Prints {"channels": […], "next_cursor": …}: channels are Slack's
-conversation objects (id, name, is_private, is_im, user, …). One call
-returns one page; next_cursor is present when there are more: pass it to
---cursor, with the same other flags.`,
+conversation objects (id, name, is_private, is_im, user, …), [] when there
+are none. One call returns one page; next_cursor is present when there are
+more: pass it to --cursor, with the same other flags.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			switch {
@@ -92,7 +92,10 @@ returns one page; next_cursor is present when there are more: pass it to
 			if err != nil {
 				return err
 			}
-			return rt.Print(payload)
+			for _, w := range payload.Warnings {
+				rt.Hintf("Warning: %s", w)
+			}
+			return cmdutil.PrintList(rt, payload, "channels")
 		},
 	}
 	clictx.AddWorkspaceFlag(cmd, &workspace)
@@ -115,9 +118,13 @@ func newNewCommand(rt *clictx.Context) *cobra.Command {
 		Long: `Create a new channel. You become its only member: add people with
 "channel invite".
 
-Prints {"channel": {"id": …, "name": …, "is_private": …}}.`,
+Prints {"channel": {"id": …, "name": …, "is_private": …}}. This is a write
+action that others see: it is refused in safe mode.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := rt.CheckSafeMode("channel new"); err != nil {
+				return err
+			}
 			// Checked before any credential lookup: it needs no network.
 			if _, err := channeladmin.NormalizeName(name); err != nil {
 				return err

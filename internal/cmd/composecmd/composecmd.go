@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mattn/go-isatty"
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/appinfo"
@@ -62,9 +63,10 @@ type Options struct {
 //     Under safe mode nothing is ever sent without a human pressing Send
 //     in the editor, whatever the environment says.
 //
-// Likewise, when no browser can be opened and stderr is not a terminal,
-// Compose fails rather than print the editor's link where an agent could
-// read it and press Send itself.
+// Likewise, when no browser can be opened, Compose fails rather than
+// print the editor's link where an agent could read it and press Send
+// itself: always under safe mode, and otherwise unless stderr is a real
+// terminal.
 func Compose(ctx context.Context, rt *clictx.Context, target, initialText string, opts Options) (map[string]any, error) {
 	return newComposer(rt).compose(ctx, target, initialText, opts)
 }
@@ -78,20 +80,33 @@ func newCommand(c *composer) *cobra.Command {
 	var opts Options
 	cmd := &cobra.Command{
 		Use:   "compose <target> [text]",
-		Short: "Open a send-capable rich editor in the browser; CI skips the editor and immediately sends supplied text",
-		Long: "Open a rich editor in the user's browser, pre-filled with [text], and wait until a human sends the " +
-			"message from there or cancels. Nothing is posted unless they press Send; what they sent (they may " +
-			"have edited the text) is printed as {ok, sent, channel_id, ts, thread_ts, permalink, text}. If they " +
-			"cancel, close the tab, or never open the editor (30 minutes), the result is {ok, cancelled, reason}.\n\n" +
-			"<target> is a Slack message URL (replies in that message's thread), #name/name, a channel id, or a " +
-			"user id (DM).\n" +
-			"[text] is the initial message text (mrkdwn); it is sent immediately when CI skips the editor.\n\n" +
-			"The command does not time out: it waits for the human. Stop it with Ctrl-C.\n\n" +
-			"CI: when the CI environment variable is set there is no browser, so the editor is skipped and [text] " +
-			"is sent immediately — except in safe mode, where the command fails instead: safe mode never sends " +
-			"without a human.\n" +
-			"No browser: the command fails, unless it runs in an interactive terminal, where it prints a one-time " +
-			"link to open by hand.",
+		Short: "Open a rich editor in the browser for a human to review and send a message",
+		Long: `Open a rich editor in the user's browser, pre-filled with [text], and wait
+until a human sends the message from there or cancels. Nothing is posted
+unless they press Send.
+
+<target> is one of:
+  a Slack message URL       reply in the thread of that message
+  #name, name, channel ID   post to that channel (reply with --thread-ts)
+  a user ID (U…/W…)         post to the direct message with that user
+
+[text] is the initial message text (Slack mrkdwn); the human may edit it.
+
+Prints {ok, sent, channel_id, ts, thread_ts, permalink, text}, where text is
+what the human sent. If they cancel, close the tab, or never open the editor
+(30 minutes), prints {ok, cancelled, reason}.
+
+The command does not time out: it waits for the human. Stop it with Ctrl-C.
+
+CI: when the CI environment variable is set there is no browser, so the
+editor is skipped and [text] is sent immediately; the output then has
+editor: "skipped" and no text. In safe mode the command fails instead: safe
+mode never sends without a human.
+
+No browser: when no browser can be opened the command fails, unless it runs
+in an interactive terminal, where it prints a one-time link to open by hand.
+In safe mode it always fails and the link is never printed: a human must run
+the command themselves in a graphical session.`,
 		Args: cobra.RangeArgs(1, 2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			text := ""
@@ -106,7 +121,7 @@ func newCommand(c *composer) *cobra.Command {
 		},
 	}
 	cmdutil.AddTargetWorkspaceFlag(cmd, &opts.Workspace)
-	cmd.Flags().StringVar(&opts.ThreadTS, "thread-ts", "", "Thread root ts to post into; overrides the URL-derived thread when supplied")
+	cmd.Flags().StringVar(&opts.ThreadTS, "thread-ts", "", "Thread root ts to reply to, for channel targets and user-ID targets; redundant with a message URL target, which already says which thread to reply in and which it must not contradict")
 	cmd.Flags().BoolVar(&opts.NoUnfurl, "no-unfurl", false, "Suppress link and media previews")
 	// [text] may start with "- ".
 	return clictx.NoTimeout(cmdutil.AllowDashText(cmd))
@@ -117,9 +132,11 @@ type composer struct {
 	rt *clictx.Context
 	// openBrowser opens the editor URL in the user's browser.
 	openBrowser func(ctx context.Context, url string) error
-	// humanAtStderr reports whether stderr is an interactive terminal,
-	// i.e. whether what is printed there is read by a human rather than
-	// captured by a program.
+	// humanAtStderr reports whether stderr is an interactive terminal:
+	// what is printed there is then most likely read by a human rather
+	// than captured by a program. Most likely only: an agent may run the
+	// command under a pseudo-terminal, which is why safe mode does not
+	// rely on it.
 	humanAtStderr func() bool
 	timeouts      timeouts
 }
@@ -133,13 +150,14 @@ func newComposer(rt *clictx.Context) *composer {
 	}
 }
 
+// isTerminal reports whether w is a terminal. Being a character device
+// is not enough: /dev/null is one.
 func isTerminal(w io.Writer) bool {
 	f, ok := w.(*os.File)
 	if !ok {
 		return false
 	}
-	info, err := f.Stat()
-	return err == nil && info.Mode()&os.ModeCharDevice != 0
+	return isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())
 }
 
 func (c *composer) compose(ctx context.Context, targetInput, initialText string, opts Options) (map[string]any, error) {
@@ -170,15 +188,12 @@ func (c *composer) compose(ctx context.Context, targetInput, initialText string,
 			workspace:    cmp.Or(loc.WorkspaceURL, target.Workspace),
 			workspaceURL: loc.WorkspaceURL,
 			channelID:    loc.ChannelID,
-			threadTS:     threadTS,
 		}
-		// A message URL replies in that message's thread, unless
-		// --thread-ts says otherwise.
-		if dest.threadTS == "" {
-			var err error
-			if dest.threadTS, err = target.ReplyThreadTS(ctx, loc.Client); err != nil {
-				return destination{}, err
-			}
+		// A message URL replies in that message's thread, which
+		// --thread-ts may repeat but not contradict.
+		var err error
+		if dest.threadTS, err = target.ThreadTS(ctx, loc.Client, threadTS); err != nil {
+			return destination{}, err
 		}
 		// The editor shows where the message goes.
 		if target.Kind == slackurl.TargetChannel {
@@ -214,11 +229,19 @@ func (c *composer) compose(ctx context.Context, targetInput, initialText string,
 		return nil, err
 	}
 	if err := c.openBrowser(ctx, sess.url()); err != nil {
-		if !c.humanAtStderr() {
+		// The link lets whoever holds it press Send: fail closed rather
+		// than hand it to an agent.
+		switch {
+		case rt.SafeMode():
+			// Even on a terminal, which may be a pseudo-terminal an
+			// agent runs the command under.
 			sess.interrupt()
 			sess.stop()
-			// The link lets whoever holds it press Send. Here it would
-			// go to a pipe or a log, which an agent reads: fail closed.
+			return nil, fmt.Errorf("safe mode is active and no browser could be opened for the compose editor (%w): nothing was sent, and the editor's link is never printed in safe mode, because whoever holds it can send the message. A human must run `%s message compose <target> [text]` themselves, in a graphical session on a machine with a browser", err, appinfo.Name)
+		case !c.humanAtStderr():
+			// The link would go to a pipe, a file or a log.
+			sess.interrupt()
+			sess.stop()
 			return nil, fmt.Errorf("could not open a browser for the compose editor (%w), and the editor's link is not printed because stderr is not a terminal: a human must review the message. Run `%s message compose` yourself in an interactive terminal (it prints the link there), on a machine with a browser", err, appinfo.Name)
 		}
 		rt.Hintf("Could not open a browser (%v).\nOpen this one-time link yourself, in a browser on this machine (over SSH, forward the port first):\n  %s", err, sess.url())

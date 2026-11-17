@@ -37,6 +37,10 @@ type harness struct {
 	// fail maps "method" or "method:<user, email or channel>" to the
 	// Slack error code to answer.
 	fail map[string]string
+	// failOnce is like fail, for the first matching call only.
+	failOnce map[string]string
+	// empty makes the workspace have no conversation at all.
+	empty bool
 }
 
 func newHarness(t *testing.T) *harness {
@@ -77,9 +81,16 @@ func (h *harness) serve(method string, params map[string]any) map[string]any {
 		subject = emails[0]
 	}
 	for _, key := range []string{method + ":" + subject, method} {
+		if code := h.failOnce[key]; code != "" {
+			delete(h.failOnce, key)
+			return map[string]any{"ok": false, "error": code}
+		}
 		if code := h.fail[key]; code != "" {
 			return map[string]any{"ok": false, "error": code}
 		}
+	}
+	if h.empty {
+		return map[string]any{}
 	}
 	switch method {
 	case "users.list":

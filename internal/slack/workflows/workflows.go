@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/maelvls/slackcli/internal/jsonx"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
@@ -78,14 +79,22 @@ type ChannelWorkflows struct {
 	ChannelID string     `json:"channel_id"`
 	Workflows []Workflow `json:"workflows"`
 	// FeaturedErr is set when the featured-workflows lookup failed (the
-	// method is not available on every workspace or token): Workflows then
-	// only holds the bookmarked ones and every Featured flag is false.
-	// Callers should surface it as a hint.
+	// method is not available on every workspace or token, and it may be
+	// rate limited or time out like any other): Workflows then only holds
+	// the bookmarked ones and every Featured flag is false. Callers should
+	// surface it as a hint.
 	FeaturedErr error `json:"-"`
 }
 
 // List returns the workflows bookmarked or featured in a channel:
 // bookmarked ones first, then featured ones that are not bookmarked.
+//
+// The bookmarks are what the listing is made of: failing to list them is
+// an error. The featured workflows are an enrichment (see package enrich):
+// whatever goes wrong with them (unknown method, rate limit, timeout, a
+// response that is not JSON) is reported in FeaturedErr next to the
+// bookmarked workflows. Only dead credentials and a cancelled context
+// fail the listing.
 func List(ctx context.Context, client *slackapi.Client, channelID string) (ChannelWorkflows, error) {
 	var (
 		bookmarks             []map[string]any
@@ -99,9 +108,7 @@ func List(ctx context.Context, client *slackapi.Client, channelID string) (Chann
 	if bookmarksErr != nil {
 		return ChannelWorkflows{}, bookmarksErr
 	}
-	// Only a Slack-side refusal of this optional method is tolerated;
-	// expired credentials, timeouts and rate limits fail the command.
-	if featErr != nil && (slackapi.ErrorCode(featErr) == "" || slackapi.IsAuthError(featErr)) {
+	if enrich.MustAbort(ctx, featErr) {
 		return ChannelWorkflows{}, featErr
 	}
 

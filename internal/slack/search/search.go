@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/maelvls/slackcli/internal/slack/channels"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slack/messages"
 	"github.com/maelvls/slackcli/internal/slack/users"
 	"github.com/maelvls/slackcli/internal/slackapi"
@@ -158,6 +159,9 @@ type searcher struct {
 	warnings    []string
 	degraded    int
 	degradedErr error
+	// fetchLimited stops the fetching of matched messages once Slack has
+	// rate limited it: the rest are rendered from the search index.
+	fetchLimited enrich.Gate
 }
 
 // Search runs the search described by opts. For KindAll, messages and
@@ -170,6 +174,9 @@ func Search(ctx context.Context, client *slackapi.Client, opts Options) (*Result
 	if err := s.prepare(ctx); err != nil {
 		return nil, err
 	}
+	// What the lookups below could not do for being rate limited (file
+	// details, user profiles) ends up in Result.Warnings.
+	ctx, incomplete := enrich.Collect(ctx)
 
 	var (
 		res     = &Result{}
@@ -219,6 +226,8 @@ func Search(ctx context.Context, client *slackapi.Client, opts Options) (*Result
 
 	if opts.ResolveUsers || opts.RefreshUsers {
 		ids := users.CollectReferencedUserIDs(matched, false)
+		// An enrichment: a rate limit leaves some users out and a warning,
+		// the error is for dead credentials and cancellation.
 		byID, err := users.ResolveByID(ctx, client, ids, users.ResolveOptions{ForceRefresh: opts.RefreshUsers, CacheDir: opts.CacheDir})
 		if err != nil {
 			return nil, fmt.Errorf("resolving the users referenced by the results: %w", err)
@@ -230,7 +239,7 @@ func Search(ctx context.Context, client *slackapi.Client, opts Options) (*Result
 		s.warnf("%d message(s) could not be fetched in full (%v): they are shown as the search index has them, possibly without attachments",
 			s.degraded, s.degradedErr)
 	}
-	res.Warnings = s.warnings
+	res.Warnings = append(s.warnings, incomplete.List()...)
 	return res, nil
 }
 

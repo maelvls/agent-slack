@@ -14,25 +14,55 @@ const SafeModeReviewed = "message send"
 
 // safeModeBlocked is everything safe mode refuses outright, because there
 // is no way for a human to review it first: the command, and what an
-// agent could otherwise do with it. It is the single source of the help
-// texts (SafeModeSummary) and of the refusals (CheckSafeMode).
+// agent could otherwise do with it. Together with safeModeNotCovered it is
+// the single source of the help texts (SafeModeSummary), of the refusals
+// (CheckSafeMode) and of what the docs must list (see the tests).
 var safeModeBlocked = []struct{ command, action string }{
 	{"message edit", "edit messages"},
 	{"message delete", "delete messages"},
+	{"message scheduled cancel", "delete pending scheduled messages"},
 	{"canvas create", "create canvases"},
 	{"canvas edit", "edit canvases"},
 	{"workflow run", "start workflows (which may post messages or act on other systems)"},
+	{"channel new", "create channels"},
+	{"channel invite", "add people to channels or send Slack Connect invitations to external e-mail addresses"},
 }
 
-// SafeModeSummary says, for help texts, what safe mode does.
-func SafeModeSummary() string {
-	quoted := make([]string, len(safeModeBlocked))
+// safeModeNotCovered are the commands that change something in Slack and
+// that safe mode deliberately lets through: they only touch the user's
+// own, low-impact state (a reaction, a draft that is not posted, a read
+// marker, the saved-for-later list, an open DM). "*" stands for every
+// subcommand.
+var safeModeNotCovered = []string{"message react", "message draft *", "channel mark", "later *", "user dm-open"}
+
+// SafeModeBlocked lists the commands safe mode refuses (CheckSafeMode).
+func SafeModeBlocked() []string {
+	out := make([]string, len(safeModeBlocked))
 	for i, b := range safeModeBlocked {
-		quoted[i] = `"` + b.command + `"`
+		out[i] = b.command
+	}
+	return out
+}
+
+// SafeModeNotCovered lists the writing commands safe mode lets through
+// unreviewed; "*" stands for every subcommand.
+func SafeModeNotCovered() []string { return append([]string(nil), safeModeNotCovered...) }
+
+// SafeModeSummary says, for help texts, what safe mode does and what it
+// does not cover.
+func SafeModeSummary() string {
+	return fmt.Sprintf(`"%s" opens the compose editor, where a human reviews and sends the message, instead of posting; %s are refused; %s are NOT covered by safe mode`,
+		SafeModeReviewed, quotedList(SafeModeBlocked()), quotedList(safeModeNotCovered))
+}
+
+// quotedList renders items as `"a", "b" and "c"`.
+func quotedList(items []string) string {
+	quoted := make([]string, len(items))
+	for i, item := range items {
+		quoted[i] = `"` + item + `"`
 	}
 	last := len(quoted) - 1
-	return fmt.Sprintf(`"%s" opens the compose editor, where a human reviews and sends the message, instead of posting; %s and %s are refused`,
-		SafeModeReviewed, strings.Join(quoted[:last], ", "), quoted[last])
+	return strings.Join(quoted[:last], ", ") + " and " + quoted[last]
 }
 
 // CheckSafeMode refuses command (e.g. "canvas edit") when safe mode is on;

@@ -1,6 +1,6 @@
 # JSON output and downloads
 
-Results are JSON on stdout; hints and warnings go to stderr. `null`, blank strings, `[]` and `{}` are pruned, so test for a field's presence. Exceptions that print a line of text: `auth add`, `auth set-default`, `auth remove`, `auth import-chrome|import-brave|import-firefox`, `auth parse-curl`. Exit codes: 0 success, 1 error (message on stderr), 124 command timeout, 130 interrupted. Each command's `--help` states its exact output.
+Results are JSON on stdout; hints and warnings go to stderr. `null`, blank strings, `[]` and `{}` are pruned, so test for a field's presence. One exception: the collection a list command is about is always present, `[]` when empty, so it can be iterated without a presence test: `messages` (`message list`, `search messages|all`), `files` (`search files|all`), `channels` (`channel list`, `unreads`), `users` (`user list`), `items` (`later list`, not with `--counts-only`), `workflows` (`workflow list`), `drafts` (`message draft list`), `scheduled_messages` (`message scheduled list`). Exceptions that print a line of text: `auth add`, `auth set-default`, `auth remove`, `auth import-chrome|import-brave|import-firefox`, `auth parse-curl`. Exit codes: 0 success, 1 error (message on stderr), 124 command timeout, 130 interrupted. Each command's `--help` states its exact output.
 
 ## Messages
 
@@ -32,6 +32,6 @@ Paged lists return `next_cursor` when there is more: pass it to `--cursor` with 
 `message get`, `message list` and `search` download attached files into the `downloads` directory of the OS cache directory (`~/Library/Caches/slackcli/downloads` on macOS, `$XDG_CACHE_HOME/slackcli/downloads` or `~/.cache/slackcli/downloads` on Linux). Canvases attached to messages are saved as Markdown (`.md`).
 
 - A downloaded file entry has an absolute `path` plus `name` (or `title` for `search files`), `mimetype` and `mode`.
-- A failed download keeps its entry, with `error` and a `path` to a `<file-id>.download-error.txt` file holding the reason; a warning is printed on stderr. This holds for `message get/list` and for every `search` command. Check for `error` before reading `path`.
+- A failed download keeps its entry, with `error` and a `path` to a `<file-id>.download-error.txt` file holding the reason; a "could not download" warning is printed on stderr. This holds for `message get/list` and for every `search` command. Check for `error` before reading `path`.
 - `search --no-download` lists files without `path`.
 - For a download-then-reply task, use `search messages --content-type file`: its results carry the source message's `permalink`, which is a valid reply target.

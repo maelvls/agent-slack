@@ -13,10 +13,10 @@ import (
 var (
 	// ErrBrowserChannel is returned when a channel canvas is requested
 	// with browser credentials.
-	ErrBrowserChannel = errors.New("adding a canvas as a channel tab requires a standard Slack token (SLACK_TOKEN=xoxb-…/xoxp-… with the canvases:write scope); imported browser credentials can create standalone canvases only: drop --channel or use a standard token")
+	ErrBrowserChannel = errors.New("adding a canvas as a channel tab requires a standard Slack token (xoxb-/xoxp- with the canvases:write scope, from SLACK_TOKEN or saved with \"auth add\"); imported browser credentials can create standalone canvases only: drop --channel or use a standard token")
 	// ErrBrowserEdit is returned when an edit is attempted with browser
 	// credentials.
-	ErrBrowserEdit = errors.New("editing a canvas requires a standard Slack token (SLACK_TOKEN=xoxb-…/xoxp-… with the canvases:write scope); imported browser credentials cannot call canvases.edit")
+	ErrBrowserEdit = errors.New("editing a canvas requires a standard Slack token (xoxb-/xoxp- with the canvases:write scope, from SLACK_TOKEN or saved with \"auth add\"); imported browser credentials cannot call canvases.edit")
 	// ErrEmptyMarkdown is returned when there is nothing to put in a
 	// canvas.
 	ErrEmptyMarkdown = errors.New("canvas Markdown is empty")

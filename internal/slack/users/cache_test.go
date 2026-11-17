@@ -10,10 +10,12 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/maelvls/slackcli/internal/appinfo"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
@@ -270,23 +272,6 @@ func TestResolveByIDFatalErrors(t *testing.T) {
 		t.Errorf("err = %v, want an auth error", err)
 	}
 
-	rec = &recorder{serve: func(method string, _ map[string]any) (map[string]any, error) {
-		return nil, &slackapi.RateLimitError{Method: method, RetryAfter: time.Minute}
-	}}
-	var ids []string
-	for i := range 40 {
-		ids = append(ids, fmt.Sprintf("U%08d", i))
-	}
-	_, err := ResolveByID(ctx, rec.client(), ids, ResolveOptions{CacheDir: t.TempDir()})
-	var rl *slackapi.RateLimitError
-	if !errors.As(err, &rl) {
-		t.Errorf("err = %v, want a rate limit error", err)
-	}
-	// The remaining lookups are not attempted once Slack says to back off.
-	if n := len(rec.calls); n > fetchConcurrency {
-		t.Errorf("%d calls after being rate limited", n)
-	}
-
 	cancelled, cancel := context.WithCancel(ctx)
 	cancel()
 	rec = &recorder{serve: func(string, map[string]any) (map[string]any, error) { return nil, cancelled.Err() }}
@@ -479,5 +464,60 @@ func TestCacheWriteMergesWithConcurrentWrites(t *testing.T) {
 	entries := loadCache(path)
 	if len(entries) != 2 || entries["U11111111"].User.ID == "" || entries["U22222222"].User.ID == "" {
 		t.Errorf("entries = %+v", entries)
+	}
+}
+
+// Resolving users is an enrichment: a rate limit keeps what is known
+// (fresh or stale) instead of failing the command that asked for it.
+func TestResolveByIDRateLimitedReturnsWhatItHas(t *testing.T) {
+	dir := t.TempDir()
+	// At t0+10h, U11111111 is cached and fresh, U22222222 cached but expired.
+	if _, err := ResolveByID(context.Background(), infoServer().client(), []string{"U22222222"}, ResolveOptions{CacheDir: dir, WorkspaceURL: "https://test.slack.com", Now: at(t0.Add(-20 * time.Hour))}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveByID(context.Background(), infoServer().client(), []string{"U11111111"}, ResolveOptions{CacheDir: dir, WorkspaceURL: "https://test.slack.com", Now: at(t0)}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := &recorder{serve: func(method string, _ map[string]any) (map[string]any, error) {
+		return nil, &slackapi.RateLimitError{Method: method, RetryAfter: time.Minute}
+	}}
+	ids := []string{"U11111111", "U22222222"}
+	for i := range 40 {
+		ids = append(ids, fmt.Sprintf("U%08d", i))
+	}
+	ctx, warnings := enrich.Collect(context.Background())
+	got, err := ResolveByID(ctx, rec.client(), ids, ResolveOptions{CacheDir: dir, WorkspaceURL: "https://test.slack.com", Now: at(t0.Add(10 * time.Hour))})
+	if err != nil {
+		t.Fatalf("err = %v, want the users already known", err)
+	}
+	if len(got) != 2 || got["U11111111"].ID == "" || got["U22222222"].ID == "" {
+		t.Errorf("users = %+v, want the fresh and the stale cached users", got)
+	}
+	// The remaining lookups are not attempted once Slack says to back off.
+	if n := len(rec.calls); n > fetchConcurrency {
+		t.Errorf("%d calls after being rate limited", n)
+	}
+	if list := warnings.List(); len(list) != 1 || !strings.Contains(list[0], "41 of the 42 users") || !strings.Contains(list[0], "rate limited") {
+		t.Errorf("warnings = %q", list)
+	}
+
+	// Some answers, then the rate limit: the answers are kept and cached.
+	var served atomic.Int32
+	rec = infoServer()
+	serve := rec.serve
+	rec.serve = func(method string, params map[string]any) (map[string]any, error) {
+		if served.Add(1) > 2 {
+			return nil, &slackapi.RateLimitError{Method: method, RetryAfter: time.Minute}
+		}
+		return serve(method, params)
+	}
+	fresh := t.TempDir()
+	got, err = ResolveByID(context.Background(), rec.client(), ids, ResolveOptions{CacheDir: fresh, WorkspaceURL: "https://test.slack.com", Now: at(t0)})
+	if err != nil || len(got) != 2 {
+		t.Errorf("got %d users, %v, want the 2 answered before the rate limit", len(got), err)
+	}
+	if len(cacheFiles(t, fresh)) != 1 {
+		t.Errorf("what was fetched before the rate limit was not cached")
 	}
 }

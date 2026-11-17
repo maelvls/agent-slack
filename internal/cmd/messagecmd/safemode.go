@@ -12,8 +12,9 @@ import (
 )
 
 // Safe mode keeps a human in the loop for what an agent writes to Slack:
-// "message send" is redirected to the compose editor, "message edit" and
-// "message delete" are refused (clictx.Context.CheckSafeMode).
+// "message send" is redirected to the compose editor; "message edit",
+// "message delete" and "message scheduled cancel" are refused
+// (clictx.Context.CheckSafeMode).
 
 // redirectFlags says which of the send flags that carry a value were
 // given (an explicitly empty value counts).
@@ -49,7 +50,8 @@ func (c *command) redirectSendToCompose(ctx context.Context, targetInput, text s
 	}
 
 	c.rt.Hintf(`Safe mode active: redirecting "message send" to the compose editor. Nothing posts until a human sends it from the editor.`)
-	// The editor waits on a human for as long as it takes.
+	// The editor waits on a human for as long as it takes. It checks
+	// --thread-ts against a message URL target as "send" does.
 	c.rt.DisableTimeout()
 	payload, err := c.compose(ctx, c.rt, targetInput, text, composecmd.Options{
 		Workspace: opts.workspace,

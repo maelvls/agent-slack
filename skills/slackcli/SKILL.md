@@ -20,8 +20,8 @@ Fallback: `go install github.com/maelvls/slackcli/cmd/slackcli@latest`.
 - Read and search freely.
 - Perform a write only when explicitly requested: `message send/edit/delete`, `message react`, `message scheduled cancel`, `message draft create/update/delete`, uploads (`--attach`), `channel new/invite/mark`, `user dm-open`, `later save/complete/archive/reopen/remove/remind`, `canvas create/edit`, `workflow run`. `workflow run` is not idempotent and can trigger downstream actions: read `workflow get` first.
 - For a compose- or review-only request, return the proposed text without invoking Slack, or use `message draft create`: it posts nothing and leaves a draft in the user's Slack client.
-- `message compose <target> [text]` hands the text to a human: it opens an editor in their browser and blocks, with no timeout, until they send or cancel. Use it only when the user asks for the editor. You cannot send from it yourself; without a browser it fails unless stderr is an interactive terminal. Exception: when the `CI` environment variable is set it skips the editor and sends `[text]` immediately, so in CI treat it as a send.
-- Safe mode (`SLACKCLI_SAFE_MODE=1` or the global `--safe-mode`) is enforced by the tool: `message send` is redirected to the compose editor (and refuses `--attach`, `--blocks`, `--schedule`, `--schedule-in`, `--reply-broadcast`, and CI); `message edit`, `message delete`, `canvas create`, `canvas edit` and `workflow run` are refused. It does not cover reactions, `message scheduled cancel`, drafts, `channel`, `later` or `user dm-open`: the rule above still applies to those. Do not turn safe mode off to get a write through; tell the user.
+- `message compose <target> [text]` hands the text to a human: it opens an editor in their browser and blocks, with no timeout, until they send or cancel. Use it only when the user asks for the editor. You cannot send from it yourself; without a browser it fails unless stderr is an interactive terminal (in safe mode it always fails: tell the user to run it themselves). Exception: when the `CI` environment variable is set it skips the editor and sends `[text]` immediately, so in CI treat it as a send.
+- Safe mode (`SLACKCLI_SAFE_MODE=1` or the global `--safe-mode`) is enforced by the tool: `message send` is redirected to the compose editor (and refuses `--attach`, `--blocks`, `--schedule`, `--schedule-in`, `--reply-broadcast`, CI, and a machine where no browser can be opened). Refused in safe mode: `message edit`, `message delete`, `message scheduled cancel`, `canvas create`, `canvas edit`, `workflow run`, `channel new` and `channel invite`. Not covered by safe mode: `message react`, `message draft *`, `channel mark`, `later *` and `user dm-open`; the rule above still applies to those. Do not turn safe mode off to get a write through; tell the user.
 
 ## Workflow
 
@@ -42,7 +42,7 @@ Fallback: `go install github.com/maelvls/slackcli/cmd/slackcli@latest`.
 - `message draft update --attach` adds files; it never removes any. Drafts with a scheduled time or several destinations are refused.
 - `canvas edit` applies one operation per call; the default `replace` without `--section-id` overwrites the whole canvas.
 - `channel invite` exits non-zero on partial failure but still prints which invites went through: read the JSON before retrying.
-- Commands are cut after 30 s (exit code 124; `SLACKCLI_COMMAND_TIMEOUT_MS`). A rate-limited call fails at once unless `SLACKCLI_RATE_LIMIT_MAX_WAIT_MS` is set.
+- Commands are cut after 30 s (exit code 124; `SLACKCLI_COMMAND_TIMEOUT_MS`), except `message compose` and the uploading ones (`message send --attach`, `message draft create/update`). A rate-limited call fails at once unless `SLACKCLI_RATE_LIMIT_MAX_WAIT_MS` is set.
 
 ## Conditional references
 

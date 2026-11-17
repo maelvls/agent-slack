@@ -3,6 +3,8 @@
 package update
 
 import (
+	"github.com/mattn/go-isatty"
+
 	"context"
 	"errors"
 	"fmt"
@@ -82,14 +84,17 @@ func New() *Updater {
 		APIBaseURL:      "https://api.github.com",
 		DownloadBaseURL: "https://github.com",
 		Repo:            appinfo.Repo,
-		Version:         appinfo.Version,
-		GOOS:            runtime.GOOS,
-		GOARCH:          runtime.GOARCH,
-		Now:             time.Now,
-		StateDir:        appinfo.CacheDir(),
-		Executable:      os.Executable,
-		IsTerminal:      isTerminal,
-		Grace:           300 * time.Millisecond,
+		// Not appinfo.Version, which also shows the module version of a
+		// "go install …@v1.2.3" build: such a build is not a release
+		// binary, and must not replace itself as one.
+		Version:    appinfo.StampedVersion(),
+		GOOS:       runtime.GOOS,
+		GOARCH:     runtime.GOARCH,
+		Now:        time.Now,
+		StateDir:   appinfo.CacheDir(),
+		Executable: os.Executable,
+		IsTerminal: isTerminal,
+		Grace:      300 * time.Millisecond,
 	}
 	if bi, ok := debug.ReadBuildInfo(); ok {
 		u.ModuleVersion = bi.Main.Version
@@ -115,8 +120,8 @@ func isTerminal(w io.Writer) bool {
 	if !ok {
 		return false
 	}
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	// Not ModeCharDevice: /dev/null is a character device too.
+	return isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())
 }
 
 // CurrentVersion returns the running version without "v" prefix, or "dev"
@@ -177,17 +182,33 @@ func (u *Updater) installScriptCommand() string {
 }
 
 // UpdateCommand returns the shell command that updates an installation of
-// the given method.
+// the given method. It is "" for a binary managed by a package manager
+// (Homebrew, Nix): no formula or flake is published, so there is no command
+// to name; see UpdateAdvice.
 func (u *Updater) UpdateCommand(m Method) string {
 	switch m {
 	case MethodGoInstall, MethodSource:
 		return u.goInstallCommand()
-	case MethodHomebrew:
-		return "brew upgrade " + appinfo.Name
-	case MethodNix:
-		return "nix profile upgrade " + appinfo.Name
+	case MethodHomebrew, MethodNix:
+		return ""
 	}
 	return appinfo.Name + " update"
+}
+
+// UpdateAdvice says how to update an installation of the given method, as
+// a clause that completes "to upgrade, …": the command to run, or, for a
+// binary that a package manager put there, to reinstall it the same way,
+// with the two supported ways of installing as alternatives.
+func (u *Updater) UpdateAdvice(m Method) string {
+	if cmd := u.UpdateCommand(m); cmd != "" {
+		return "run: " + cmd
+	}
+	where := "a Homebrew Cellar"
+	if m == MethodNix {
+		where = "the Nix store"
+	}
+	return fmt.Sprintf(`reinstall it the way it was installed (this binary lives in %s, which %s does not modify); alternatively install a release binary with "%s" or build one with "%s"`,
+		where, appinfo.Name, u.installScriptCommand(), u.goInstallCommand())
 }
 
 // Status is the outcome of a version check. Versions carry no "v" prefix.

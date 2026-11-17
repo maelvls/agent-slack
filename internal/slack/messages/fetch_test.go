@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slack/slackurl"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
@@ -176,6 +177,35 @@ func TestFetchThreadFromReplyTS(t *testing.T) {
 	}
 	if want := []string{tsOf(0), tsOf(1), tsOf(2)}; !reflect.DeepEqual(tsList(msgs), want) {
 		t.Errorf("ts = %v, want %v", tsList(msgs), want)
+	}
+}
+
+// Slack does not always answer a reply's ts with that reply alone: the
+// thread must be fetched from its root whatever comes after the reply.
+func TestFetchThreadFromReplyTSWhenSlackReturnsSeveralMessages(t *testing.T) {
+	rec := &recorder{serve: func(_ string, params map[string]any) (map[string]any, error) {
+		if params["ts"] == tsOf(2) {
+			return map[string]any{"messages": anys(
+				raw(tsOf(2), "r2", "thread_ts", tsOf(0)),
+				raw(tsOf(3), "r3", "thread_ts", tsOf(0)),
+			)}, nil
+		}
+		return map[string]any{"messages": anys(
+			raw(tsOf(0), "root", "thread_ts", tsOf(0)),
+			raw(tsOf(1), "r1", "thread_ts", tsOf(0)),
+			raw(tsOf(2), "r2", "thread_ts", tsOf(0)),
+			raw(tsOf(3), "r3", "thread_ts", tsOf(0)),
+		)}, nil
+	}}
+	msgs, err := FetchThread(context.Background(), rec.client(), "C12345678", tsOf(2), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{tsOf(0), tsOf(1), tsOf(2), tsOf(3)}; !reflect.DeepEqual(tsList(msgs), want) {
+		t.Errorf("ts = %v, want %v", tsList(msgs), want)
+	}
+	if len(rec.calls) != 2 || rec.calls[1].params["ts"] != tsOf(0) {
+		t.Errorf("calls = %v", rec.calls)
 	}
 }
 
@@ -740,5 +770,42 @@ func TestFetchFailsWhenFileLookupHitsExpiredCredentials(t *testing.T) {
 	}}
 	if _, err := FetchMessage(context.Background(), rec.client(), testRef, false); !slackapi.IsAuthError(err) {
 		t.Errorf("err = %v, want an auth error", err)
+	}
+}
+
+// files.info is an enrichment: being rate limited must not lose the
+// messages, and must not be hammered further.
+func TestFetchKeepsMessagesWhenFileLookupIsRateLimited(t *testing.T) {
+	var files []map[string]any
+	for i := range 20 {
+		files = append(files, map[string]any{"id": fmt.Sprintf("F%d", i), "name": "kept"})
+	}
+	rec := &recorder{serve: func(method string, _ map[string]any) (map[string]any, error) {
+		if method == "files.info" {
+			return nil, &slackapi.RateLimitError{Method: method, RetryAfter: time.Minute}
+		}
+		return map[string]any{"messages": anys(raw(tsOf(5), "hi", "files", anys(files...)))}, nil
+	}}
+	ctx, warnings := enrich.Collect(context.Background())
+	msgs, err := FetchChannelHistory(ctx, rec.client(), "C12345678", HistoryOptions{})
+	if err != nil {
+		t.Fatalf("err = %v, want the messages without the file details", err)
+	}
+	if len(msgs) != 1 || len(msgs[0].Files) != 20 || msgs[0].Files[0].Name != "kept" {
+		t.Errorf("messages = %+v", msgs)
+	}
+	if n := len(rec.only("files.info")); n > filesInfoConcurrency {
+		t.Errorf("%d files.info calls after being rate limited, want at most %d", n, filesInfoConcurrency)
+	}
+	if got := warnings.List(); len(got) != 1 || !strings.Contains(got[0], "20 of 20 attached files") || !strings.Contains(got[0], "rate limited") {
+		t.Errorf("warnings = %q", got)
+	}
+
+	// Same for a single message and for a thread, and without a collector.
+	if _, err := FetchMessage(context.Background(), rec.client(), testRef, false); err != nil {
+		t.Errorf("FetchMessage: %v", err)
+	}
+	if _, err := FetchThread(context.Background(), rec.client(), "C12345678", tsOf(5), false); err != nil {
+		t.Errorf("FetchThread: %v", err)
 	}
 }

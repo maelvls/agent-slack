@@ -176,8 +176,12 @@ func (u *Updater) StartBackgroundCheck(ctx context.Context) (finish func(stderr 
 		if err != nil || !isNewer(st.LatestVersion, current) || !elapsed(now, st.NotifiedAt, checkInterval) {
 			return
 		}
-		fmt.Fprintf(stderr, "\nUpdate available: %s → %s. Run \"%s\" to upgrade.\n",
-			current, latest, u.UpdateCommand(u.InstallMethod()))
+		method := u.InstallMethod()
+		if cmd := u.UpdateCommand(method); cmd != "" {
+			fmt.Fprintf(stderr, "\nUpdate available: %s → %s. Run \"%s\" to upgrade.\n", current, latest, cmd)
+		} else {
+			fmt.Fprintf(stderr, "\nUpdate available: %s → %s. To upgrade, %s.\n", current, latest, u.UpdateAdvice(method))
+		}
 		st.NotifiedAt = now.UnixMilli()
 		_ = u.saveState(st)
 	}

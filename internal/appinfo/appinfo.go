@@ -31,23 +31,55 @@ const (
 
 // Version is set at build time with
 // -ldflags "-X github.com/maelvls/slackcli/internal/appinfo.Version=v1.2.3".
+//
+// A `go install module/cmd/name@v1.2.3` build carries no ldflags: it takes
+// the version from the module metadata instead (see StampedVersion).
 var Version = "dev"
 
+// unstamped is the value of Version in a build without ldflags (kept as a
+// literal above: the linker's -X only overrides plain string variables).
+const unstamped = "dev"
+
+// stamped records whether Version was set by the release tooling (ldflags)
+// rather than taken from the module metadata.
+var stamped bool
+
 func init() {
-	// `go install module/cmd/name@v1.2.3` builds carry no ldflags; take the
-	// version from the module metadata instead.
-	if Version != "dev" {
-		return
-	}
+	module := ""
 	if info, ok := debug.ReadBuildInfo(); ok {
-		if v := info.Main.Version; v != "" && v != "(devel)" {
-			Version = v
-		}
+		module = info.Main.Version
 	}
+	Version, stamped = resolveVersion(Version, module)
 }
 
+// resolveVersion picks the version to display from the ldflags value and
+// the main module version, and says whether it came from ldflags.
+func resolveVersion(ldflags, module string) (version string, fromLDFlags bool) {
+	if ldflags != unstamped {
+		return ldflags, true
+	}
+	if module != "" && module != "(devel)" {
+		return module, false
+	}
+	return unstamped, false
+}
+
+// StampedVersion is the version set by the release tooling, or "dev" for
+// any other build. Unlike Version it is "dev" for a "go install …@v1.2.3"
+// build, which is not a release binary and must not self-update as one.
+func StampedVersion() string {
+	if stamped {
+		return Version
+	}
+	return unstamped
+}
+
+// BareVersion is Version without its "v" prefix ("1.2.3", or "dev"): the
+// form printed by --version and sent in the User-Agent.
+func BareVersion() string { return strings.TrimPrefix(Version, "v") }
+
 // UserAgent is sent on every HTTP request.
-func UserAgent() string { return Name + "/" + strings.TrimPrefix(Version, "v") }
+func UserAgent() string { return Name + "/" + BareVersion() }
 
 // EnvName returns the full name of a tool-specific environment variable,
 // e.g. EnvName("SAFE_MODE") == "SLACKCLI_SAFE_MODE".
@@ -78,7 +110,8 @@ func EnvDurationMS(suffix string, def time.Duration, allowZero bool) time.Durati
 }
 
 // EnvBool reports whether a tool-specific variable is set to a truthy value
-// ("1", "true", "yes", "on"; case-insensitive).
+// ("1", "true", "yes", "on"; case-insensitive). Anything else is false: do
+// not use it for a safety switch, see EnvOnUnlessOff.
 func EnvBool(suffix string) bool {
 	switch strings.ToLower(Env(suffix)) {
 	case "1", "true", "yes", "on":
@@ -86,6 +119,35 @@ func EnvBool(suffix string) bool {
 	}
 	return false
 }
+
+// EnvOnUnlessOff reports whether a safety switch is on: it is on when the
+// variable, under the current OR the legacy prefix, is set to anything but
+// an explicit off value ("", "0", "false", "no", "off"; case-insensitive).
+//
+// It fails closed, unlike EnvBool: a value it does not recognise ("enabled",
+// "y", "2"…) turns the switch on, and one name saying "false" cannot
+// override the other saying "1".
+func EnvOnUnlessOff(suffix string) bool {
+	for _, prefix := range []string{EnvPrefix, LegacyEnvPrefix} {
+		if !isOffValue(os.Getenv(prefix + suffix)) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOffValue(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false", "no", "off":
+		return true
+	}
+	return false
+}
+
+// SafeModeEnv reports whether the environment asks for safe mode
+// (SLACKCLI_SAFE_MODE or the legacy AGENT_SLACK_SAFE_MODE; see
+// EnvOnUnlessOff).
+func SafeModeEnv() bool { return EnvOnUnlessOff("SAFE_MODE") }
 
 func home() string {
 	h, err := os.UserHomeDir()

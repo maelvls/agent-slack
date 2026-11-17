@@ -3,6 +3,7 @@
 package channels
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -185,37 +186,49 @@ func scanByName(ctx context.Context, client *slackapi.Client, method, types, nam
 	}
 }
 
-// ResolveName returns a human-readable name for a conversation ID: the
-// channel name ("general"), or for a DM the other user's display name. It
-// falls back to the ID itself when the name cannot be determined.
+// ResolveName returns a human-readable name for a conversation ID (see
+// LookupName), or the ID itself when the name cannot be determined,
+// whatever the reason: it cannot report dead credentials or a rate limit.
+// Code that makes further calls should use LookupName.
 func ResolveName(ctx context.Context, client *slackapi.Client, channelID string) string {
+	if name, err := LookupName(ctx, client, channelID); err == nil && name != "" {
+		return name
+	}
+	return channelID
+}
+
+// LookupName returns a human-readable name for a conversation ID: the
+// channel name ("general"), or for a DM the other user's display name,
+// else their real name, else their handle. It returns "" when Slack has
+// no name for the conversation.
+//
+// The error is that of the failed conversations.info or users.info call.
+// A name is an enrichment (see package enrich): callers go on without it,
+// except when enrich.MustAbort(ctx, err), and stop looking names up once
+// one lookup has been rate limited.
+func LookupName(ctx context.Context, client *slackapi.Client, channelID string) (string, error) {
 	resp, err := client.API(ctx, "conversations.info", map[string]any{"channel": channelID})
 	if err != nil {
-		return channelID
+		return "", err
 	}
 	ch := jsonx.Map(resp["channel"])
-	if ch == nil {
-		return channelID
-	}
 	if !jsonx.Bool(ch["is_im"]) {
-		if name := jsonx.Str(ch["name"]); name != "" {
-			return name
-		}
-		return channelID
+		return cmp.Or(jsonx.Str(ch["name"]), jsonx.Str(ch["name_normalized"])), nil
 	}
 	userID := jsonx.Str(ch["user"])
 	if userID == "" {
-		return channelID
+		return "", nil
 	}
-	userResp, err := client.API(ctx, "users.info", map[string]any{"user": userID})
+	resp, err = client.API(ctx, "users.info", map[string]any{"user": userID})
 	if err != nil {
-		return channelID
+		return "", err
 	}
-	profile := jsonx.GetMap(userResp, "user", "profile")
-	for _, key := range []string{"display_name", "real_name"} {
-		if name := jsonx.Str(profile[key]); name != "" {
-			return name
-		}
-	}
-	return channelID
+	user := jsonx.Map(resp["user"])
+	profile := jsonx.Map(user["profile"])
+	return cmp.Or(
+		jsonx.Str(profile["display_name"]),
+		jsonx.Str(user["real_name"]),
+		jsonx.Str(profile["real_name"]),
+		jsonx.Str(user["name"]),
+	), nil
 }

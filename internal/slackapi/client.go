@@ -70,6 +70,9 @@ type Client struct {
 	httpClient   *http.Client
 	handler      Handler
 	sleep        func(ctx context.Context, d time.Duration) error
+	// loopbackForTesting lets credentials go to a loopback address (see
+	// WithLoopbackWorkspaceForTesting).
+	loopbackForTesting bool
 }
 
 // Option customises a Client.
@@ -91,9 +94,24 @@ func WithSleep(fn func(ctx context.Context, d time.Duration) error) Option {
 	return func(c *Client) { c.sleep = fn }
 }
 
+// WithLoopbackWorkspaceForTesting is for tests only: it lets a client send
+// its credentials to a workspace URL on a loopback address (an
+// net/http/httptest server such as http://127.0.0.1:1234), over http or
+// https. Without it, browser credentials are only ever sent to an https
+// Slack host. It never allows a non-loopback host, and nothing in the CLI
+// (flag, environment variable, configuration) can turn it on.
+func WithLoopbackWorkspaceForTesting() Option {
+	return func(c *Client) { c.loopbackForTesting = true }
+}
+
 // New returns a client for auth. workspaceURL (e.g.
 // "https://acme.slack.com") is required for browser auth and optional for
 // standard tokens.
+//
+// Browser credentials (xoxc token + "d" cookie) are sent to the workspace
+// URL itself, so the client refuses to call the API when that URL is not an
+// https Slack workspace origin (see WorkspaceOrigin): the call fails before
+// anything is sent. Standard tokens always go to https://slack.com.
 func New(auth Auth, workspaceURL string, opts ...Option) *Client {
 	c := &Client{
 		auth:         auth,
@@ -127,9 +145,14 @@ func (c *Client) WorkspaceURL() string { return c.workspaceURL }
 func (c *Client) HTTPClient() *http.Client { return c.httpClient }
 
 // Authorize adds credentials and the User-Agent to a non-API request (file
-// download/upload). Only call it for requests to Slack-owned hosts.
+// download/upload). Only call it for requests to Slack-owned hosts: as a
+// last line of defence, a request that is not https to a Slack host
+// (IsSlackHost) only gets the User-Agent, never the token or the cookie.
 func (c *Client) Authorize(req *http.Request) {
 	req.Header.Set("User-Agent", appinfo.UserAgent())
+	if !c.mayReceiveCredentials(req.URL) {
+		return
+	}
 	if t := c.auth.BearerToken(); t != "" {
 		req.Header.Set("Authorization", "Bearer "+t)
 	}
@@ -209,8 +232,7 @@ func (c *Client) call(ctx context.Context, method string, params map[string]any,
 			}
 			var ne interface{ Timeout() bool }
 			if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()) {
-				return nil, fmt.Errorf("Slack API call %s timed out after %s. Set %s to adjust.",
-					method, timeout, appinfo.EnvName("API_TIMEOUT_MS"))
+				return nil, timeoutError(method, timeout)
 			}
 			return nil, fmt.Errorf("calling Slack API %s: %w", method, err)
 		}
@@ -250,12 +272,68 @@ func (c *Client) endpoint(method string) (string, error) {
 		if c.workspaceURL == "" {
 			return "", errors.New("browser auth (xoxc token) requires a workspace URL: pass --workspace, set SLACK_WORKSPACE_URL, or use a Slack message URL as the target")
 		}
+		if err := c.checkWorkspaceURL(); err != nil {
+			return "", err
+		}
 		return c.workspaceURL + "/api/" + method, nil
 	}
 	if c.auth.Token == "" {
 		return "", errors.New("missing Slack token")
 	}
 	return c.baseURL + "/api/" + method, nil
+}
+
+// checkWorkspaceURL refuses a workspace URL that browser credentials must
+// not be sent to. It is the client's own guard: callers are expected to
+// have validated the URL already (auth.NormalizeURL).
+func (c *Client) checkWorkspaceURL() error {
+	if origin, err := WorkspaceOrigin(c.workspaceURL); err == nil && origin == strings.ToLower(c.workspaceURL) {
+		return nil
+	}
+	if u, err := url.Parse(c.workspaceURL); err == nil && c.loopbackForTesting && isLoopbackURL(u) {
+		return nil
+	}
+	return fmt.Errorf("refusing to send browser credentials to %q: a workspace URL must be an https Slack origin such as https://acme.slack.com", c.workspaceURL)
+}
+
+// mayReceiveCredentials reports whether a non-API request to u may carry
+// the token and the cookie.
+func (c *Client) mayReceiveCredentials(u *url.URL) bool {
+	if u == nil {
+		return false
+	}
+	if u.Scheme == "https" && u.User == nil && IsSlackHost(u.Hostname()) {
+		return true
+	}
+	return c.loopbackForTesting && isLoopbackURL(u)
+}
+
+// readOnlyVerbs are the last segments of API method names that only read
+// ("conversations.history", "users.info"…).
+var readOnlyVerbs = map[string]bool{
+	"list": true, "info": true, "history": true, "replies": true, "test": true,
+	"get": true, "lookup": true, "counts": true, "members": true, "search": true,
+}
+
+// isReadOnlyMethod reports whether an API method obviously changes nothing,
+// judging by its name. When in doubt it answers false.
+func isReadOnlyMethod(method string) bool {
+	if strings.HasPrefix(method, "search.") {
+		return true
+	}
+	return readOnlyVerbs[method[strings.LastIndex(method, ".")+1:]]
+}
+
+// timeoutError is returned when Slack did not answer in time. A request
+// that may have changed something says so: the caller must not blindly
+// retry it.
+func timeoutError(method string, timeout time.Duration) error {
+	note := ""
+	if !isReadOnlyMethod(method) {
+		note = "; the request may still have been processed, so check before retrying"
+	}
+	return fmt.Errorf("Slack API call %s timed out after %s%s. Set %s to adjust.",
+		method, timeout, note, appinfo.EnvName("API_TIMEOUT_MS"))
 }
 
 func (c *Client) post(ctx context.Context, endpoint string, fields map[string]string, multi bool, timeout time.Duration) (int, http.Header, []byte, error) {

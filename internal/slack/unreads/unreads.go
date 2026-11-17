@@ -8,7 +8,6 @@ package unreads
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -16,6 +15,7 @@ import (
 	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/jsonx"
 	"github.com/maelvls/slackcli/internal/slack/channels"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slack/messages"
 	"github.com/maelvls/slackcli/internal/slack/slacktext"
 	"github.com/maelvls/slackcli/internal/slackapi"
@@ -103,7 +103,8 @@ type Channel struct {
 	// the Options.MaxMessages that were fetched.
 	MessagesTruncated bool `json:"messages_truncated,omitempty"`
 	// MessagesError is Slack's error code when the unread messages could
-	// not be fetched.
+	// not be fetched ("ratelimited" when Slack was rate limiting the
+	// history calls: see Result.Warnings).
 	MessagesError string `json:"messages_error,omitempty"`
 }
 
@@ -119,6 +120,10 @@ type Result struct {
 	Channels []Channel `json:"channels"`
 	// Threads is nil when no thread has unread replies.
 	Threads *Threads `json:"threads,omitempty"`
+	// Warnings say what is missing from Channels because Slack rate
+	// limited the lookups (names, messages), for the caller to show on
+	// stderr.
+	Warnings []string `json:"-"`
 }
 
 var systemSubtypes = []string{
@@ -142,6 +147,12 @@ type entry struct {
 // two calls for its name and one for its messages, at most
 // fetchConcurrency at a time. A conversation whose messages cannot be
 // read is still listed, with Channel.MessagesError set.
+//
+// Only client.counts, a cancelled context and dead credentials fail the
+// listing. Names and messages are enrichments (see package enrich): once
+// Slack rate limits one kind of lookup, no more of that kind are made, the
+// conversations concerned are listed without a name or with
+// MessagesError "ratelimited", and Result.Warnings says so.
 func Fetch(ctx context.Context, client *slackapi.Client, opts Options) (Result, error) {
 	if !client.Auth().IsBrowser() {
 		return Result{}, fmt.Errorf(`unread counts come from Slack's internal client.counts API, which only works with browser session credentials, not with a bot or user token (xoxb-/xoxp-). `+
@@ -184,6 +195,7 @@ func Fetch(ctx context.Context, client *slackapi.Client, opts Options) (Result, 
 	defer cancel(nil)
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, fetchConcurrency)
+	var namesLimited, messagesLimited enrich.Gate
 	run := func(task func()) {
 		wg.Go(func() {
 			sem <- struct{}{}
@@ -197,18 +209,35 @@ func Fetch(ctx context.Context, client *slackapi.Client, opts Options) (Result, 
 		ch := &result.Channels[i]
 		*ch = Channel{ChannelID: e.id, ChannelType: e.kind, UnreadCount: e.count, MentionCount: e.mentions}
 		run(func() {
-			// ResolveName answers the ID itself when it finds no name.
-			if name := channels.ResolveName(ctx, client, e.id); name != e.id {
+			if namesLimited.Closed() {
+				return
+			}
+			name, err := channels.LookupName(ctx, client, e.id)
+			switch {
+			case err == nil:
 				ch.ChannelName = name
+			case enrich.MustAbort(ctx, err):
+				cancel(fmt.Errorf("looking up the name of %s: %w", e.id, err))
+			default:
+				namesLimited.Failed(err)
 			}
 		})
 		if opts.CountsOnly {
 			continue
 		}
 		run(func() {
-			if err := fetchMessages(ctx, client, e, opts, ch); isFatal(ctx, err) {
+			if messagesLimited.Closed() {
+				ch.MessagesError = enrich.RateLimitedCode
+				return
+			}
+			err := fetchMessages(ctx, client, e, opts, ch)
+			switch {
+			case err == nil:
+			case enrich.MustAbort(ctx, err):
 				cancel(fmt.Errorf("fetching unread messages of %s: %w", e.id, err))
-			} else if err != nil {
+			case messagesLimited.Failed(err):
+				ch.MessagesError = enrich.RateLimitedCode
+			default:
 				ch.MessagesError = errorCode(err)
 			}
 		})
@@ -216,6 +245,16 @@ func Fetch(ctx context.Context, client *slackapi.Client, opts Options) (Result, 
 	wg.Wait()
 	if err := context.Cause(ctx); err != nil {
 		return Result{}, err
+	}
+	if n, err := messagesLimited.Skipped(); n > 0 {
+		result.Warnings = append(result.Warnings, fmt.Sprintf(
+			`the unread messages of %d of %d conversations were not fetched (%v): they are listed with "messages_error": %q; %s`,
+			n, len(entries), err, enrich.RateLimitedCode, enrich.Hint()))
+	}
+	if n, err := namesLimited.Skipped(); n > 0 {
+		result.Warnings = append(result.Warnings, fmt.Sprintf(
+			"the names of %d of %d conversations were not looked up (%v): they are listed by ID only; %s",
+			n, len(entries), err, enrich.Hint()))
 	}
 
 	slices.SortStableFunc(result.Channels, func(a, b Channel) int {
@@ -236,14 +275,6 @@ func unreadCount(c Channel) int {
 		return 0
 	}
 	return *c.UnreadCount
-}
-
-// isFatal reports whether err must abort the whole listing: the command
-// was cancelled, the credentials are dead (the caller refreshes them and
-// retries), or Slack is rate limiting us.
-func isFatal(ctx context.Context, err error) bool {
-	var rl *slackapi.RateLimitError
-	return err != nil && (ctx.Err() != nil || slackapi.IsAuthError(err) || errors.As(err, &rl))
 }
 
 func errorCode(err error) string {

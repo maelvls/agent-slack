@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/maelvls/slackcli/internal/output"
 	"github.com/maelvls/slackcli/internal/slackapi"
@@ -133,18 +134,39 @@ func TestListFeaturedFailures(t *testing.T) {
 			t.Errorf("List = %+v", got)
 		}
 	})
-	// Both used to be swallowed, printing a plausible but incomplete list.
+	// Used to be swallowed, printing a plausible but incomplete list and
+	// never refreshing the credentials.
 	t.Run("expired credentials fail", func(t *testing.T) {
 		f := &fake{fixtures: map[string]any{"bookmarks.list": bookmarks, "workflows.featured.list": apiError("invalid_auth")}}
 		if _, err := List(context.Background(), f.client(), "C1"); !slackapi.IsAuthError(err) {
 			t.Errorf("err = %v, want an auth error", err)
 		}
 	})
-	t.Run("transport errors fail", func(t *testing.T) {
-		boom := errors.New("connection reset")
-		f := &fake{fixtures: map[string]any{"bookmarks.list": bookmarks, "workflows.featured.list": boom}}
-		if _, err := List(context.Background(), f.client(), "C1"); !errors.Is(err, boom) {
-			t.Errorf("err = %v, want %v", err, boom)
+	// The featured workflows are optional: none of these may cost the
+	// bookmarked ones, as long as the caller is told.
+	for name, failure := range map[string]error{
+		"rate limit":      &slackapi.RateLimitError{Method: "workflows.featured.list", RetryAfter: time.Minute},
+		"transport error": errors.New("connection reset"),
+		"timeout":         context.DeadlineExceeded,
+		"non-JSON answer": errors.New("decoding the response of workflows.featured.list: invalid character '<'"),
+	} {
+		t.Run(name+" is tolerated and reported", func(t *testing.T) {
+			f := &fake{fixtures: map[string]any{"bookmarks.list": bookmarks, "workflows.featured.list": failure}}
+			got, err := List(context.Background(), f.client(), "C1")
+			if err != nil {
+				t.Fatalf("err = %v, want the bookmarked workflows", err)
+			}
+			if len(got.Workflows) != 2 || got.Workflows[0].Featured || !errors.Is(got.FeaturedErr, failure) {
+				t.Errorf("List = %+v", got)
+			}
+		})
+	}
+	t.Run("cancellation fails", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		f := &fake{fixtures: map[string]any{"bookmarks.list": bookmarks, "workflows.featured.list": ctx.Err()}}
+		if _, err := List(ctx, f.client(), "C1"); !errors.Is(err, context.Canceled) {
+			t.Errorf("err = %v, want context.Canceled", err)
 		}
 	})
 	t.Run("bookmarks errors fail", func(t *testing.T) {

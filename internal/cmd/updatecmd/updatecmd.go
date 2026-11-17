@@ -27,8 +27,20 @@ type checkResult struct {
 	Latest          string        `json:"latest"`
 	UpdateAvailable bool          `json:"update_available"`
 	InstallMethod   update.Method `json:"install_method"`
-	UpdateCommand   string        `json:"update_command"`
-	Status          string        `json:"status"`
+	// UpdateCommand is the command that updates this installation. It is
+	// absent when there is none to name (a binary put there by a package
+	// manager): UpdateHint then says what to do.
+	UpdateCommand string `json:"update_command"`
+	UpdateHint    string `json:"update_hint"`
+	Status        string `json:"status"`
+}
+
+// setAdvice fills in how to update an installation of the given method.
+func (r *checkResult) setAdvice(u *update.Updater, method update.Method) {
+	r.UpdateCommand = u.UpdateCommand(method)
+	if r.UpdateCommand == "" {
+		r.UpdateHint = u.UpdateAdvice(method)
+	}
 }
 
 // updatedResult is printed after a successful self-update.
@@ -53,11 +65,16 @@ func newCommand(rt *clictx.Context, u *update.Updater) *cobra.Command {
 A release binary (installed with install.sh or downloaded by hand) replaces
 itself: the archive for this platform is downloaded, verified against the
 release's SHA-256 checksums and swapped in atomically. Other installations
-(go install, Homebrew, Nix, a build from source) are not modified: the
-command fails and prints the command to run instead.
+are not modified: the command fails and says what to do instead. For
+"go install" and a build from source that is the "go install" command to run.
+A binary found in a package manager's directory (a Homebrew Cellar, the Nix
+store) must be reinstalled the way it was installed; %[1]s itself is only
+distributed through install.sh, release archives and "go install".
 
 Prints JSON with "status": "up_to_date", "update_available" (--check only),
 "updated", or "development_build" (--check on a build without a version).
+With --check, "update_command" is the command that updates this installation,
+or "update_hint" says what to do when there is no such command.
 
 %[1]s also checks for a new release in the background, at most once a
 day and only when stderr is a terminal (never under CI). Disable that with
@@ -92,10 +109,10 @@ func run(ctx context.Context, rt *clictx.Context, u *update.Updater, checkOnly b
 	// "up to date" would be a guess.
 	if st.Current == update.DevVersion {
 		if !checkOnly {
-			return fmt.Errorf("this %s is a development build without a version, so it cannot update itself; install the latest release with: %s",
-				appinfo.Name, u.UpdateCommand(method))
+			return fmt.Errorf("this %s is a development build without a version, so it cannot update itself; to install the latest release, %s",
+				appinfo.Name, u.UpdateAdvice(method))
 		}
-		result.UpdateCommand = u.UpdateCommand(method)
+		result.setAdvice(u, method)
 		result.Status = "development_build"
 		return rt.Print(result)
 	}
@@ -105,13 +122,13 @@ func run(ctx context.Context, rt *clictx.Context, u *update.Updater, checkOnly b
 		return rt.Print(result)
 	}
 	if checkOnly {
-		result.UpdateCommand = u.UpdateCommand(method)
+		result.setAdvice(u, method)
 		result.Status = "update_available"
 		return rt.Print(result)
 	}
 	if method != update.MethodBinary {
-		return fmt.Errorf("%s %s was installed with %s and cannot replace itself; to get %s run: %s",
-			appinfo.Name, st.Current, method, st.Latest, u.UpdateCommand(method))
+		return fmt.Errorf("%s %s was installed with %s and cannot replace itself; to get %s, %s",
+			appinfo.Name, st.Current, method, st.Latest, u.UpdateAdvice(method))
 	}
 
 	rt.Hintf("Updating %s %s → %s...", appinfo.Name, st.Current, st.Latest)

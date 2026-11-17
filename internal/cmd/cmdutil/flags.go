@@ -3,7 +3,6 @@ package cmdutil
 import (
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -37,18 +36,14 @@ func ParseTS(flag, raw string) (string, error) {
 	return ts, nil
 }
 
-// ParseLimit parses the value of an optional --limit flag declared as a
-// string, so that "not given" can mean "whatever Slack defaults to": ""
-// returns 0, anything else must be a positive integer.
-func ParseLimit(raw string) (int, error) {
-	if raw == "" {
-		return 0, nil
+// CheckOptionalLimit validates the integer --limit flag of a command on
+// which "not given" (the flag's default, 0) means "whatever Slack defaults
+// to": when the flag is given, it must be a positive integer.
+func CheckOptionalLimit(cmd *cobra.Command, n int) error {
+	if cmd.Flags().Changed("limit") && n < 1 {
+		return fmt.Errorf("invalid --limit value %d: must be a positive integer", n)
 	}
-	n, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil || n < 1 {
-		return 0, fmt.Errorf("invalid --limit value %q: must be a positive integer", raw)
-	}
-	return n, nil
+	return nil
 }
 
 // CheckLimit validates a --limit flag that must be between 1 and max.

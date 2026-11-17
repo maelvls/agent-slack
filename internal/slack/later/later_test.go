@@ -542,7 +542,8 @@ func TestSavedUpdateIsMultipart(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
 	}))
 	defer srv.Close()
-	client := slackapi.New(slackapi.Auth{Type: slackapi.AuthBrowser, XoxcToken: "xoxc-test", XoxdCookie: "xoxd-test"}, srv.URL)
+	client := slackapi.New(slackapi.Auth{Type: slackapi.AuthBrowser, XoxcToken: "xoxc-test", XoxdCookie: "xoxd-test"}, srv.URL,
+		slackapi.WithLoopbackWorkspaceForTesting())
 
 	if err := Mark(context.Background(), client, "C123", "1.1", MarkCompleted); err != nil {
 		t.Fatal(err)
@@ -657,5 +658,58 @@ func TestParseState(t *testing.T) {
 		if _, err := ParseState(in); err == nil || !strings.Contains(err.Error(), "--state") {
 			t.Errorf("ParseState(%q): err = %v", in, err)
 		}
+	}
+}
+
+// Channel names and message contents are enrichments: a rate limit must
+// not lose the list of saved items.
+func TestListDegradesWhenRateLimited(t *testing.T) {
+	var items []any
+	for i := range 30 {
+		items = append(items, saved(fmt.Sprintf("C%d", i), "1.1", "in_progress", 100))
+	}
+	for _, limited := range []string{"conversations.history", "conversations.replies", "conversations.info"} {
+		t.Run(limited, func(t *testing.T) {
+			var mu sync.Mutex
+			calls := map[string]int{}
+			client := slackapi.NewFake(func(_ context.Context, method string, params map[string]any) (map[string]any, error) {
+				mu.Lock()
+				calls[method]++
+				mu.Unlock()
+				switch {
+				case method == "saved.list":
+					return savedList([4]float64{30, 0, 0, 30}, items...), nil
+				case method == limited:
+					return nil, &slackapi.RateLimitError{Method: method, RetryAfter: time.Minute}
+				case method == "conversations.info":
+					return map[string]any{"channel": map[string]any{"name": "name-" + params["channel"].(string)}}, nil
+				case method == "conversations.history" && limited == "conversations.replies":
+					return map[string]any{"messages": []any{}}, nil // not a top-level message
+				}
+				return map[string]any{"messages": []any{map[string]any{"ts": "1.1", "text": "hello"}}}, nil
+			})
+			res, err := List(context.Background(), client, ListOptions{Limit: 30})
+			if err != nil {
+				t.Fatalf("err = %v, want the items without what was rate limited", err)
+			}
+			if len(res.Items) != 30 || res.Counts == nil || res.Counts.Total != 30 {
+				t.Fatalf("result = %+v", res)
+			}
+			if n := calls[limited]; n > hydrateConcurrency {
+				t.Errorf("%d %s calls after being rate limited, want at most %d", n, limited, hydrateConcurrency)
+			}
+			if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "30 of 30") || !strings.Contains(res.Warnings[0], "rate limited") {
+				t.Errorf("warnings = %q", res.Warnings)
+			}
+			for _, it := range res.Items {
+				if limited == "conversations.info" {
+					if it.ChannelName != "" || it.MessageError != "" || it.Message == nil {
+						t.Fatalf("item = %+v", it)
+					}
+				} else if it.MessageError != "ratelimited" || it.Message != nil || it.ChannelName != "name-"+it.ChannelID {
+					t.Fatalf("item = %+v", it)
+				}
+			}
+		})
 	}
 }

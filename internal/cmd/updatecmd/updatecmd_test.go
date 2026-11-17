@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -222,11 +223,14 @@ func TestOtherInstallMethodsAreNotModified(t *testing.T) {
 		{"go install", func(f *fixture) { f.u.Version, f.u.ModuleVersion = "dev", "v1.0.0" }, "go-install", goInstall},
 		{"homebrew", func(f *fixture) {
 			f.u.Executable = func() (string, error) { return "/opt/homebrew/Cellar/tool/1.0.0/bin/tool", nil }
-		}, "homebrew", "brew upgrade " + appinfo.Name},
+		}, "homebrew", ""},
 		{"nix", func(f *fixture) {
 			f.u.Executable = func() (string, error) { return "/nix/store/abc-tool-1.0.0/bin/tool", nil }
-		}, "nix", "nix profile upgrade " + appinfo.Name},
+		}, "nix", ""},
 	}
+	// No Homebrew formula or Nix flake is published: for those the advice
+	// is to reinstall the same way, or to use what does exist.
+	const reinstall = "reinstall it the way it was installed"
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture(t)
@@ -234,8 +238,24 @@ func TestOtherInstallMethodsAreNotModified(t *testing.T) {
 			tt.setup(f)
 
 			stdout, _, err := f.run(t)
-			if err == nil || !strings.Contains(err.Error(), "run: "+tt.wantCommand) || !strings.Contains(err.Error(), "installed with "+tt.method) {
-				t.Fatalf("error = %v, want it to give %q", err, tt.wantCommand)
+			if err == nil || !strings.Contains(err.Error(), "installed with "+tt.method) {
+				t.Fatalf("error = %v, want it to name the method %q", err, tt.method)
+			}
+			if tt.wantCommand != "" {
+				if !strings.Contains(err.Error(), "run: "+tt.wantCommand) {
+					t.Errorf("error = %v, want it to give %q", err, tt.wantCommand)
+				}
+			} else {
+				for _, want := range []string{reinstall, "install.sh | sh", goInstall} {
+					if !strings.Contains(err.Error(), want) {
+						t.Errorf("error = %v, want it to contain %q", err, want)
+					}
+				}
+				for _, bogus := range []string{"brew upgrade", "nix profile"} {
+					if strings.Contains(err.Error(), bogus) {
+						t.Errorf("error = %v names %q, which does not exist", err, bogus)
+					}
+				}
 			}
 			if stdout != "" {
 				t.Errorf("stdout = %q, want nothing on failure", stdout)
@@ -251,12 +271,19 @@ func TestOtherInstallMethodsAreNotModified(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			advice := `"update_command": "` + tt.wantCommand + `"`
+			if tt.wantCommand == "" {
+				advice = `"update_hint": ` + strconv.Quote(f.u.UpdateAdvice(update.Method(tt.method)))
+				if !strings.Contains(advice, reinstall) || strings.Contains(stdout, "update_command") || strings.Contains(stdout, "brew upgrade") || strings.Contains(stdout, "nix profile") {
+					t.Errorf("stdout names a command that does not exist:\n%s", stdout)
+				}
+			}
 			wantJSON(t, stdout,
 				`"current": "1.0.0"`,
 				`"latest": "1.2.0"`,
 				`"update_available": true`,
 				`"install_method": "`+tt.method+`"`,
-				`"update_command": "`+tt.wantCommand+`"`,
+				advice,
 				`"status": "update_available"`,
 			)
 		})

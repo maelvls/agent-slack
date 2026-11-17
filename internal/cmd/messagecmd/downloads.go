@@ -92,7 +92,7 @@ func (c *command) downloadMessageFiles(ctx context.Context, client *slackapi.Cli
 	for i, f := range todo {
 		out[f.ID] = results[i]
 		if !results[i].OK {
-			c.rt.Hintf("Warning: skipping file %s: %s", f.ID, results[i].Error)
+			c.rt.Hintf("Warning: could not download file %s: %s", f.ID, results[i].Error)
 		}
 	}
 	return out, nil

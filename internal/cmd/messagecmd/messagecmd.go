@@ -48,7 +48,7 @@ func newCommand(c *command) *cobra.Command {
 
 Safe mode (--safe-mode or %[2]s=1) keeps a human in the loop:
 %[3]s.
-"message react" and "message scheduled cancel" are NOT covered by safe mode.`,
+("*" stands for every subcommand.)`,
 			appinfo.Name, appinfo.EnvName("SAFE_MODE"), clictx.SafeModeSummary()),
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {

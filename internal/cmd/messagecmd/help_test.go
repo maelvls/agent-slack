@@ -60,7 +60,7 @@ func TestHelpContracts(t *testing.T) {
 
 	cancel := findCommand(t, root, "scheduled", "cancel")
 	wantContains(t, "scheduled cancel --channel", flagUsage(t, cancel, "channel"), "Required")
-	wantContains(t, "scheduled cancel help", cancel.Long, "Not covered by safe mode")
+	wantContains(t, "scheduled cancel help", cancel.Long, "Refused in safe mode")
 
 	list := findCommand(t, root, "list")
 	wantContains(t, "list --limit", flagUsage(t, list, "limit"), "1 to 1000")
@@ -77,7 +77,11 @@ func TestHelpContracts(t *testing.T) {
 	}
 
 	wantContains(t, "message help", root.Long, `short for "slackcli message get <target>"`)
-	wantContains(t, "message help", root.Long, `NOT covered by safe mode`)
+	// What safe mode covers, and what it does not, comes from the one
+	// list in clictx.
+	wantContains(t, "message help", root.Long, clictx.SafeModeSummary())
+	wantContains(t, "message help", root.Long, `"message scheduled cancel"`)
+	wantContains(t, "message help", root.Long, `"message react", "message draft *", "channel mark", "later *" and "user dm-open" are NOT covered by safe mode`)
 	wantContains(t, "react help", findCommand(t, root, "react").Long, "not covered by safe mode")
 	wantContains(t, "edit help", findCommand(t, root, "edit").Long, "Refused in safe mode")
 	wantContains(t, "delete help", findCommand(t, root, "delete").Long, "Refused in safe mode")

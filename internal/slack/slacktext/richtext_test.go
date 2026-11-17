@@ -70,7 +70,43 @@ func TestParseInlineElements(t *testing.T) {
 		{"underscores inside words", "rename snake_case_name to other_name", `[{"type":"text","text":"rename snake_case_name to other_name"}]`},
 		{"arithmetic", "2 * 3 * 4 and a*b*c", `[{"type":"text","text":"2 * 3 * 4 and a*b*c"}]`},
 		{"tilde as approximately", "~5 min or ~10 min", `[{"type":"text","text":"~5 min or ~10 min"}]`},
-		{"bare URL with underscores", "see https://example.com/a_b_c/_d_ now", `[{"type":"text","text":"see https://example.com/a_b_c/_d_ now"}]`},
+		{"bare URL with underscores", "see https://example.com/a_b_c/_d_ now", `[
+			{"type":"text","text":"see "},
+			{"type":"link","url":"https://example.com/a_b_c/_d_"},
+			{"type":"text","text":" now"}]`},
+		{"bare URL ending a sentence", "(see https://example.com/a_(b)). Or http://x.test/?q=1&r=2, ok", `[
+			{"type":"text","text":"(see "},
+			{"type":"link","url":"https://example.com/a_(b)"},
+			{"type":"text","text":"). Or "},
+			{"type":"link","url":"http://x.test/?q=1&r=2"},
+			{"type":"text","text":", ok"}]`},
+		{"styled bare URL", "*https://example.com*", `[{"type":"link","url":"https://example.com","style":{"bold":true}}]`},
+		{"URL with a mention-like path", "https://medium.com/@channel/post-1 https://www.youtube.com/@UNBOXTHERAPY", `[
+			{"type":"link","url":"https://medium.com/@channel/post-1"},
+			{"type":"text","text":" "},
+			{"type":"link","url":"https://www.youtube.com/@UNBOXTHERAPY"}]`},
+		{"words and addresses are not mentions", "@WEBHOOKS @USERNAME bob@here.com @channel.io a/@here", `[{"type":"text","text":"@WEBHOOKS @USERNAME bob@here.com @channel.io a/@here"}]`},
+		{"mention after punctuation", "(@here) cc:@U05BRPTKL6A.", `[
+			{"type":"text","text":"("},
+			{"type":"broadcast","range":"here"},
+			{"type":"text","text":") cc:"},
+			{"type":"user","user_id":"U05BRPTKL6A"},
+			{"type":"text","text":"."}]`},
+		{"date token", "due <!date^1392734382^{date_short} at {time}^https://example.com|Feb 18> ok", `[
+			{"type":"text","text":"due "},
+			{"type":"date","timestamp":1392734382,"format":"{date_short} at {time}","url":"https://example.com","fallback":"Feb 18"},
+			{"type":"text","text":" ok"}]`},
+		{"date token without link or fallback", "<!date^1392734382^{date}>", `[{"type":"date","timestamp":1392734382,"format":"{date}"}]`},
+		{"malformed date token stays text", "<!date^soon^{date}|x> <!date^1392734382>", `[
+			{"type":"text","text":"<!date^soon^{date}|x>"},
+			{"type":"text","text":" "},
+			{"type":"text","text":"<!date^1392734382>"}]`},
+		{"skin-toned emoji is one element", "hi :wave::skin-tone-3: :+1::skin-tone-6:!", `[
+			{"type":"text","text":"hi "},
+			{"type":"emoji","name":"wave","skin_tone":3},
+			{"type":"text","text":" "},
+			{"type":"emoji","name":"+1","skin_tone":6},
+			{"type":"text","text":"!"}]`},
 		{"CommonMark bold stays literal", "**bold**", `[{"type":"text","text":"**bold**"}]`},
 		{"span does not cross lines", "*not\nbold*", `[{"type":"text","text":"*not\nbold*"}]`},
 		{"marker inside a span", "_snake_case_", `[{"type":"text","text":"snake_case","style":{"italic":true}}]`},
@@ -99,7 +135,7 @@ func TestParseInlineElements(t *testing.T) {
 }
 
 func TestTextToRichTextBlocksNil(t *testing.T) {
-	for _, text := range []string{"Hello world", "Visit <https://example.com|Example>", "*bold* only", "", "-5 degrees\n2024.5 is not a list\n-\n1."} {
+	for _, text := range []string{"Hello world", "Visit <https://example.com|Example>", "*bold* only", "", "-5 degrees\n2024.5 is not a list\n-\n1.", "2024. Great year", "In short:\n2024) was fine\nthe end", "use ``` to open a block"} {
 		if got := TextToRichTextBlocks(text); got != nil {
 			t.Errorf("TextToRichTextBlocks(%q) = %v, want nil", text, got)
 		}
@@ -172,7 +208,7 @@ func TestTextToRichTextBlocks(t *testing.T) {
 		{"Slack links and CommonMark links stay distinct", "- Review <https://example.com/pull/42|PR #42>\n- Review [PR #43](https://example.com/pull/43)", false, `[
 			{"type":"rich_text_list","style":"bullet","elements":[
 				{"type":"rich_text_section","elements":[{"type":"text","text":"Review "},{"type":"link","url":"https://example.com/pull/42","text":"PR #42"}]},
-				` + item("Review [PR #43](https://example.com/pull/43)") + `]}]`},
+				{"type":"rich_text_section","elements":[{"type":"text","text":"Review [PR #43]("},{"type":"link","url":"https://example.com/pull/43"},{"type":"text","text":")"}]}]}]`},
 		{"code block after a list", "- Item\n```\ncode here\n```", false, `[
 			{"type":"rich_text_list","style":"bullet","elements":[` + item("Item") + `]},
 			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"code here"}]}]`},
@@ -224,6 +260,37 @@ func TestTextToRichTextBlocks(t *testing.T) {
 			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `]}]`},
 		{"CRLF line endings", "- a\r\n- b\r\n", false, `[
 			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `,` + item("b") + `]}]`},
+		{"first line of a code block that is not a language tag is code", "- a\n```make\nmake install```", false, `[
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `]},
+			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"make\nmake install"}]}]`},
+		{"one-word first line is kept, inline mode", "```make\nmake install```", true, `[
+			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"make\nmake install"}]}]`},
+		{"unknown info string is kept", "- a\n```ls\nls -l\n```", false, `[
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `]},
+			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"ls\nls -l"}]}]`},
+		{"language name as Slack-style code is kept", "- a\n```go\ngo build```", false, `[
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `]},
+			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"go\ngo build"}]}]`},
+		{"fence in the middle of a line", "- a\nRun: ```\n- x\n1. y\n```\n- b\n- c", false, `[
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `]},
+			` + item(`Run: \n`) + `,
+			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"- x\n1. y"}]},
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("b") + `,` + item("c") + `]}]`},
+		{"indented fences", "- a\n  ```python\n  - x\n  - y\n  ```\n- b", false, `[
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `]},
+			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"  - x\n  - y"}]},
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("b") + `]}]`},
+		{"year at the start of a paragraph is not a list", "- a\n2024. Great year\nfor us", false, `[
+			{"type":"rich_text_list","style":"bullet","elements":[` + item("a") + `]},
+			` + item(`2024. Great year\nfor us\n`) + `]`},
+		{"single numbered item", "1. only item", false, `[
+			{"type":"rich_text_list","style":"ordered","elements":[` + item("only item") + `]}]`},
+		{"large numbers in a run are a list", "100. a\n101. b", false, `[
+			{"type":"rich_text_list","style":"ordered","offset":99,"elements":[` + item("a") + `,` + item("b") + `]}]`},
+		{"links, dates and skin tones in list items", "- see https://example.com/a_b.\n- at <!date^1392734382^{time}|noon> :wave::skin-tone-2:", false, `[
+			{"type":"rich_text_list","style":"bullet","elements":[
+				{"type":"rich_text_section","elements":[{"type":"text","text":"see "},{"type":"link","url":"https://example.com/a_b"},{"type":"text","text":"."}]},
+				{"type":"rich_text_section","elements":[{"type":"text","text":"at "},{"type":"date","timestamp":1392734382,"format":"{time}","fallback":"noon"},{"type":"text","text":" "},{"type":"emoji","name":"wave","skin_tone":2}]}]}]`},
 		{"code block alone, inline mode", "```\ncode\n```", true, `[
 			{"type":"rich_text_preformatted","elements":[{"type":"text","text":"code"}]}]`},
 		{"quote alone, inline mode", "> *quoted*", true, `[

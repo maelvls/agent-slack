@@ -351,16 +351,112 @@ func TestParseTS(t *testing.T) {
 	}
 }
 
-func TestParseLimit(t *testing.T) {
-	for raw, want := range map[string]int{"": 0, "5": 5, " 20 ": 20} {
-		if got, err := ParseLimit(raw); err != nil || got != want {
-			t.Errorf("ParseLimit(%q) = %d, %v, want %d", raw, got, err, want)
+// --thread-ts may repeat the thread a message URL designates, but not
+// contradict it; for the other targets it is the thread.
+func TestThreadTS(t *testing.T) {
+	e := newEnv(t, acme)
+	const root = "1700000000.000001"
+	client := slackapi.NewFake(func(_ context.Context, method string, _ map[string]any) (map[string]any, error) {
+		if method == "conversations.history" {
+			return map[string]any{"messages": []any{map[string]any{"ts": messageTS, "thread_ts": root, "text": "hi"}}}, nil
+		}
+		return map[string]any{}, nil
+	})
+	ctx := context.Background()
+	url, _ := ParseTarget(e.rt, messageURL, "")
+	for _, flag := range []string{"", root} {
+		if got, err := url.ThreadTS(ctx, client, flag); err != nil || got != root {
+			t.Errorf("URL, --thread-ts %q: %q, %v, want %q", flag, got, err, root)
 		}
 	}
-	// "12abc" used to be accepted as 12.
-	for _, raw := range []string{"12abc", "abc", "0", "-1", "1.5", " "} {
-		_, err := ParseLimit(raw)
-		wantErr(t, err, "positive integer")
+	// Not even the ts of the linked reply itself: it is not its thread.
+	for _, flag := range []string{"1699999999.000001", messageTS} {
+		_, err := url.ThreadTS(ctx, client, flag)
+		wantErr(t, err, "--thread-ts "+flag+" contradicts the message URL, whose thread is "+root)
+	}
+	for _, arg := range []string{"C12345678", "U12345678"} {
+		target, _ := ParseTarget(e.rt, arg, "")
+		for _, flag := range []string{"", root} {
+			if got, err := target.ThreadTS(ctx, client, flag); err != nil || got != flag {
+				t.Errorf("%s, --thread-ts %q: %q, %v", arg, flag, got, err)
+			}
+		}
+	}
+}
+
+func TestCheckOptionalLimit(t *testing.T) {
+	run := func(args ...string) error {
+		var limit int
+		cmd := &cobra.Command{Use: "list", RunE: func(cmd *cobra.Command, _ []string) error {
+			return CheckOptionalLimit(cmd, limit)
+		}}
+		cmd.Flags().IntVar(&limit, "limit", 0, "")
+		cmd.SetArgs(args)
+		cmd.SetOut(&bytes.Buffer{})
+		cmd.SetErr(&bytes.Buffer{})
+		return cmd.Execute()
+	}
+	for _, args := range [][]string{nil, {"--limit", "1"}, {"--limit=20"}} {
+		if err := run(args...); err != nil {
+			t.Errorf("%v: %v", args, err)
+		}
+	}
+	for _, value := range []string{"0", "-1"} {
+		wantErr(t, run("--limit", value), "invalid --limit value "+value+": must be a positive integer")
+	}
+	// Not an integer: refused by the flag itself, as on every other
+	// command ("12abc" was once accepted as 12).
+	for _, value := range []string{"12abc", "abc", "1.5", ""} {
+		wantErr(t, run("--limit", value), `invalid argument "`+value+`" for "--limit" flag`)
+	}
+}
+
+type printed struct {
+	OK     bool             `json:"ok"`
+	Items  []map[string]any `json:"items"`
+	Files  []string         `json:"files,omitempty"`
+	Cursor string           `json:"next_cursor"`
+	Hidden string           `json:"-"`
+}
+
+// A list command's collection is printed as [] when empty, in its place;
+// everything else is pruned as usual.
+func TestPrintList(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		v    any
+		keys []string
+		want string
+	}{
+		{"empty collection is kept in field order", printed{OK: true}, []string{"items"},
+			"{\n  \"ok\": true,\n  \"items\": []\n}\n"},
+		{"between its neighbours, omitempty included", &printed{OK: true, Cursor: "c1"}, []string{"items", "files"},
+			"{\n  \"ok\": true,\n  \"items\": [],\n  \"files\": [],\n  \"next_cursor\": \"c1\"\n}\n"},
+		{"a collection whose entries all prune away", printed{OK: true, Items: []map[string]any{{"a": ""}}}, []string{"items"},
+			"{\n  \"ok\": true,\n  \"items\": []\n}\n"},
+		{"non-empty output is untouched", printed{OK: true, Items: []map[string]any{{"id": "1", "tags": []string{"<b>&"}, "blank": ""}}}, []string{"items"},
+			"{\n  \"ok\": true,\n  \"items\": [\n    {\n      \"id\": \"1\",\n      \"tags\": [\n        \"<b>&\"\n      ]\n    }\n  ]\n}\n"},
+		{"nested values keep their indentation", printed{OK: true, Items: []map[string]any{{"id": "1"}}}, []string{"files"},
+			"{\n  \"ok\": true,\n  \"items\": [\n    {\n      \"id\": \"1\"\n    }\n  ],\n  \"files\": []\n}\n"},
+		{"everything pruned", struct {
+			Channels []string `json:"channels"`
+		}{}, []string{"channels"}, "{\n  \"channels\": []\n}\n"},
+		{"map: sorted position", map[string]any{"ok": true, "zebra": 1, "items": nil}, []string{"items"},
+			"{\n  \"items\": [],\n  \"ok\": true,\n  \"zebra\": 1\n}\n"},
+		{"map without the key: last", map[string]any{"ok": true}, []string{"items"},
+			"{\n  \"ok\": true,\n  \"items\": []\n}\n"},
+		{"no keys: plain Print", printed{OK: true}, nil, "{\n  \"ok\": true\n}\n"},
+		{"not an object", []string{"a"}, []string{"items"}, "[\n  \"a\"\n]\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newEnv(t, acme)
+			if err := PrintList(e.rt, tc.v, tc.keys...); err != nil {
+				t.Fatal(err)
+			}
+			if got := e.rt.Stdout.(*bytes.Buffer).String(); got != tc.want {
+				t.Errorf("got\n%s\nwant\n%s", got, tc.want)
+			}
+		})
 	}
 }
 

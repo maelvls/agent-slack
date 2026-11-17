@@ -3,6 +3,8 @@ package auth
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"strings"
@@ -15,8 +17,10 @@ import (
 // implementation is the macOS login keychain; elsewhere secrets stay in the
 // 0600 credentials file.
 type Keychain interface {
-	// Get returns the secret, or "" if absent or unavailable.
-	Get(service, account string) string
+	// Get returns the secret. An item that does not exist is ("", nil);
+	// an error means that the keychain could not be read (locked, timed
+	// out waiting on a prompt…), which says nothing about the item.
+	Get(service, account string) (string, error)
 	// Set stores the secret and reports whether it succeeded.
 	Set(service, account, value string) bool
 	// Delete removes the secret (best effort).
@@ -42,14 +46,35 @@ func KeychainTimeout() time.Duration {
 	return appinfo.EnvDurationMS("KEYCHAIN_TIMEOUT_MS", 3*time.Second, false)
 }
 
-func (macKeychain) Get(service, account string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), KeychainTimeout())
+// securityItemNotFound is security(1)'s exit status for errSecItemNotFound.
+const securityItemNotFound = 44
+
+func (macKeychain) Get(service, account string) (string, error) {
+	timeout := KeychainTimeout()
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "security", "find-generic-password", "-s", service, "-a", account, "-w").Output()
-	if err != nil {
-		return ""
+	return keychainGetResult(out, err, ctx.Err() != nil, timeout)
+}
+
+// keychainGetResult interprets the outcome of `security
+// find-generic-password`: only its "item not found" status means that the
+// secret is absent. Its stderr is not quoted: the exit status is enough.
+func keychainGetResult(out []byte, err error, timedOut bool, timeout time.Duration) (string, error) {
+	if err == nil {
+		return strings.TrimSpace(string(out)), nil
 	}
-	return strings.TrimSpace(string(out))
+	if timedOut {
+		return "", fmt.Errorf("the keychain did not answer within %s (a prompt may be waiting for you)", timeout)
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		if exit.ExitCode() == securityItemNotFound {
+			return "", nil
+		}
+		return "", fmt.Errorf("the keychain could not be read (security exited with status %d)", exit.ExitCode())
+	}
+	return "", fmt.Errorf("the keychain could not be read: %w", err)
 }
 
 // Set feeds the command to `security -i` on stdin so that the secret never

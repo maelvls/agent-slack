@@ -19,8 +19,9 @@ import (
 
 type listOptions struct {
 	workspace string
-	limit     string
-	all       bool
+	// limit is 0 when --limit was not given: all that Slack returns.
+	limit int
+	all   bool
 }
 
 type listOutput struct {
@@ -54,17 +55,13 @@ func draftsClient(ctx context.Context, rt *clictx.Context, workspace string) (*s
 }
 
 func list(ctx context.Context, rt *clictx.Context, opts listOptions) (listOutput, error) {
-	limit, err := cmdutil.ParseLimit(opts.limit)
-	if err != nil {
-		return listOutput{}, err
-	}
 	workspace := rt.EffectiveWorkspace(opts.workspace)
 	return clictx.WithAutoRefresh(ctx, rt, func() (listOutput, error) {
 		client, err := draftsClient(ctx, rt, workspace)
 		if err != nil {
 			return listOutput{}, err
 		}
-		found, err := drafts.List(ctx, client, drafts.ListOptions{Limit: limit, IncludeInactive: opts.all})
+		found, err := drafts.List(ctx, client, drafts.ListOptions{Limit: opts.limit, IncludeInactive: opts.all})
 		if err != nil {
 			return listOutput{}, err
 		}

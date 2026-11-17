@@ -2,6 +2,7 @@ package slacktext
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -27,9 +28,11 @@ func (s inlineStyle) apply(el map[string]any) map[string]any {
 
 // ParseInlineElements parses the inline formatting a user types into Slack
 // rich text inline elements: `*bold*`, `_italic_`, `~strike~`, backtick-quoted code,
-// `:emoji:`, `<url|label>`, `<url>`, `<@U123>`, `<#C123>`, `<!subteam^S123>`,
-// `<!here>`, and the bare `@U123ABCDE`, `@here`, `@channel` and `@everyone`.
-// Everything else, CommonMark syntax included, is kept as literal text.
+// `:emoji:` (one element for `:wave::skin-tone-3:`), `<url|label>`, `<url>`,
+// bare http(s) URLs, `<@U123>`, `<#C123>`, `<!subteam^S123>`, `<!here>`,
+// `<!date^...>`, and the bare `@U123ABCDE`, `@here`, `@channel` and
+// `@everyone` (see [bareMentionAt]). Everything else, CommonMark syntax
+// included, is kept as literal text.
 //
 // As in Slack, a `*`, `_` or `~` only opens or closes a span at a word
 // boundary, so that `snake_case_name`, `2 * 3 * 4` and URLs stay intact.
@@ -58,9 +61,6 @@ var (
 	usergroupTokenRE = regexp.MustCompile(`^!subteam\^([A-Z0-9]+)(?:\|.*)?$`)
 	broadcastTokenRE = regexp.MustCompile(`^!(here|channel|everyone)(?:\|.*)?$`)
 	manualLinkRE     = regexp.MustCompile(`^(?i:https?://|mailto:)`)
-	bareUserRE       = regexp.MustCompile(`^@([UWB][A-Z0-9]{6,})\b`)
-	bareBroadcastRE  = regexp.MustCompile(`^@(here|channel|everyone)\b`)
-	bareURLRE        = regexp.MustCompile(`^https?://[^\s<>]+`)
 )
 
 func (p *inlineParser) parse(text string, style inlineStyle) {
@@ -75,11 +75,6 @@ func (p *inlineParser) parse(text string, style inlineStyle) {
 			pending, i = end, end
 			continue
 		}
-		if end < 0 {
-			// Literal text to skip without looking inside (a URL).
-			i = -end
-			continue
-		}
 		i++
 	}
 	flush(len(text))
@@ -87,8 +82,7 @@ func (p *inlineParser) parse(text string, style inlineStyle) {
 
 // elementAt tries to parse an element starting at text[i]. On success it
 // calls flush(i), appends the element and returns the index after it. It
-// returns i when there is none, and minus the index to resume at when the
-// text up to there must stay literal.
+// returns i when there is none.
 func (p *inlineParser) elementAt(text string, i int, style inlineStyle, flush func(int)) int {
 	rest := text[i:]
 	afterWord := i > 0 && isWordByte(text[i-1])
@@ -110,7 +104,13 @@ func (p *inlineParser) elementAt(text string, i int, style inlineStyle, flush fu
 			return i
 		}
 		flush(i)
-		p.out = append(p.out, map[string]any{"type": "emoji", "name": name})
+		emoji := map[string]any{"type": "emoji", "name": name}
+		if tone, toneEnd, ok := skinToneAt(text, end); ok {
+			// Slack has one element for an emoji and its skin tone.
+			emoji["skin_tone"] = int(tone - '0')
+			end = toneEnd
+		}
+		p.out = append(p.out, emoji)
 		return end
 
 	case '*', '_', '~':
@@ -141,28 +141,32 @@ func (p *inlineParser) elementAt(text string, i int, style inlineStyle, flush fu
 		return i + end + 2
 
 	case '@':
-		if afterWord {
+		m, end, ok := bareMentionAt(text, i)
+		if !ok {
 			return i
 		}
-		if m := bareUserRE.FindStringSubmatch(rest); m != nil {
-			flush(i)
-			p.out = append(p.out, map[string]any{"type": "user", "user_id": m[1]})
-			return i + len(m[0])
+		flush(i)
+		if m.userID != "" {
+			p.out = append(p.out, map[string]any{"type": "user", "user_id": m.userID})
+		} else {
+			p.out = append(p.out, map[string]any{"type": "broadcast", "range": m.broadcast})
 		}
-		if m := bareBroadcastRE.FindStringSubmatch(rest); m != nil {
-			flush(i)
-			p.out = append(p.out, map[string]any{"type": "broadcast", "range": m[1]})
-			return i + len(m[0])
-		}
+		return end
 
 	case 'h':
-		// The `_` and `~` of a bare URL are not formatting.
+		// A bare URL is a link, as it is in a message sent as plain text,
+		// and its `_`, `~` and `@` are neither formatting nor mentions.
 		if afterWord {
 			return i
 		}
-		if url := bareURLRE.FindString(rest); url != "" {
-			return -(i + len(url))
+		loc := bareURLRE.FindStringIndex(rest)
+		if loc == nil || loc[0] != 0 {
+			return i
 		}
+		url := trimBareURL(rest[:loc[1]])
+		flush(i)
+		p.out = append(p.out, style.apply(map[string]any{"type": "link", "url": url}))
+		return i + len(url)
 	}
 	return i
 }
@@ -182,6 +186,9 @@ func angleToken(token string, style inlineStyle) map[string]any {
 	if m := broadcastTokenRE.FindStringSubmatch(token); m != nil {
 		return map[string]any{"type": "broadcast", "range": m[1]}
 	}
+	if date := dateToken(token); date != nil {
+		return date
+	}
 	if url, label, _ := strings.Cut(token, "|"); manualLinkRE.MatchString(url) {
 		link := map[string]any{"type": "link", "url": url}
 		if label != "" {
@@ -190,6 +197,29 @@ func angleToken(token string, style inlineStyle) map[string]any {
 		return style.apply(link)
 	}
 	return style.apply(map[string]any{"type": "text", "text": "<" + token + ">"})
+}
+
+// dateToken converts the inside of a `<!date^timestamp^format^link|fallback>`
+// token to a rich text `date` element. It returns nil for anything else.
+func dateToken(token string) map[string]any {
+	command, fallback, _ := strings.Cut(token, "|")
+	rest, ok := strings.CutPrefix(command, "!date^")
+	if !ok {
+		return nil
+	}
+	parts := strings.SplitN(rest, "^", 3)
+	timestamp, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || len(parts) < 2 || parts[1] == "" {
+		return nil
+	}
+	date := map[string]any{"type": "date", "timestamp": timestamp, "format": parts[1]}
+	if len(parts) == 3 && parts[2] != "" {
+		date["url"] = parts[2]
+	}
+	if fallback != "" {
+		date["fallback"] = fallback
+	}
+	return date
 }
 
 // spanAt parses a `*bold*`, `_italic_` or `~strike~` span whose opening

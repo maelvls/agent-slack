@@ -274,8 +274,10 @@ func FetchThread(ctx context.Context, client *slackapi.Client, channelID, thread
 	if err != nil {
 		return nil, err
 	}
-	// Asked about a reply, Slack answers with that reply alone.
-	if len(out) == 1 && out[0].ThreadTS != "" && out[0].ThreadTS != threadTS && out[0].ThreadTS != out[0].TS {
+	// Asked about a reply, Slack answers with that reply (alone, or
+	// followed by whatever else it sees fit) instead of the thread: the
+	// first message it returns then names the real root.
+	if len(out) > 0 && out[0].ThreadTS != "" && out[0].ThreadTS != threadTS {
 		out, err = fetchReplies(ctx, client, channelID, out[0].ThreadTS, includeReactions)
 		if err != nil {
 			return nil, err

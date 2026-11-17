@@ -81,15 +81,20 @@ var (
 	draftTSRe = regexp.MustCompile(`^\d+(\.\d+)?$`)
 )
 
-// ValidateID rejects values that cannot be a draft ID (blank, a channel
-// or user ID, a channel name, a URL), which otherwise only surface as an
-// opaque Slack error or a "not found".
+// ValidateID rejects values that cannot be a draft ID (blank, a C… or G…
+// channel ID, a user ID, a channel name, a URL), which otherwise only
+// surface as an opaque Slack error or a "not found".
+//
+// Draft IDs are "Dr" followed by upper-case letters and digits
+// ("Dr0C98G04RNC"). Nothing that starts with "D" is refused for looking
+// like a DM channel ID: telling the two apart is Slack's business, and a
+// wrong guess here would lock a real draft out.
 func ValidateID(id string) error {
 	hint := fmt.Sprintf(`draft ids look like "Dr0123ABCD" and are printed by "%s message draft list" and "draft create"`, appinfo.Name)
 	switch {
 	case strings.TrimSpace(id) == "":
 		return fmt.Errorf("missing draft id: %s", hint)
-	case slackid.IsChannelID(id), slackid.IsUserID(id):
+	case slackid.IsChannelID(id) && !strings.HasPrefix(id, "D"), slackid.IsUserID(id):
 		return fmt.Errorf("%q is a channel or user id, not a draft id: %s", id, hint)
 	case !draftIDRe.MatchString(id):
 		return fmt.Errorf("invalid draft id %q: %s", id, hint)

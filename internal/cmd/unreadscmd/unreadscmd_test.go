@@ -257,8 +257,9 @@ func TestUnreadsWithNothingUnread(t *testing.T) {
 	if _, err := h.run(); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(h.stdout.String()); got != "{}" {
-		t.Errorf("printed %q", got)
+	// "channels" is there although empty: jq '.channels[]' must not fail.
+	if got, want := h.stdout.String(), "{\n  \"channels\": []\n}\n"; got != want {
+		t.Errorf("printed %q, want %q", got, want)
 	}
 }
 

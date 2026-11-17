@@ -26,7 +26,7 @@ Never test against real Slack: do not run the built binary against a workspace, 
 | `internal/clictx` | Runtime shared by commands: `*Context` (`Client`, `EffectiveWorkspace`, `Print`, `Hintf`, `SafeMode`, `DisableTimeout`), `WithAutoRefresh`, `AddWorkspaceFlag`, `NoTimeout` |
 | `internal/cmd/root` | Command tree, `Run`, command-timeout watchdog, exit codes |
 | `internal/cmd/<name>cmd` | One package per command, exporting `New(rt *clictx.Context) *cobra.Command` |
-| `internal/slack/<domain>` | Slack logic without CLI concerns (`messages`, `search`, `channels`, `users`, `files`, `upload`, `canvas`, `drafts`, `later`, `unreads`, `scheduled`, `workflows`, `slacktext`, `slackurl`, ...) |
+| `internal/slack/<domain>` | Slack logic without CLI concerns (`messages`, `search`, `channels`, `users`, `files`, `upload`, `canvas`, `drafts`, `later`, `unreads`, `scheduled`, `workflows`, `slacktext`, `slackurl`, `enrich` (the rule for optional lookups: degrade on rate limits), ...) |
 | `internal/output` | Pruned, key-order-preserving, 2-space JSON |
 | `internal/jsonx` | Accessors for loosely-typed JSON (`Map`, `Slice`, `Str`, `Int`, `Bool`, ...) |
 | `internal/slackid` | Recognises channel and user IDs |

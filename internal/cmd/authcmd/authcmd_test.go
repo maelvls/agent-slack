@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,9 +18,18 @@ import (
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
+// fakeKeychain is an in-memory keychain. The key unavailableKey makes every
+// Get fail, like a locked keychain.
 type fakeKeychain map[string]string
 
-func (k fakeKeychain) Get(service, account string) string { return k[service+"|"+account] }
+const unavailableKey = "!unavailable"
+
+func (k fakeKeychain) Get(service, account string) (string, error) {
+	if msg, ok := k[unavailableKey]; ok {
+		return "", errors.New(msg)
+	}
+	return k[service+"|"+account], nil
+}
 func (k fakeKeychain) Set(service, account, value string) bool {
 	k[service+"|"+account] = value
 	return true
@@ -93,9 +103,9 @@ func (h *harness) stored(url string) (auth.Workspace, slackapi.Auth) {
 	if w == nil {
 		h.t.Fatalf("workspace %s is not stored (have %d workspaces)", url, len(creds.Workspaces))
 	}
-	a, ok := h.rt.Store.Resolve(*w)
-	if !ok {
-		h.t.Fatalf("workspace %s has no usable secrets", url)
+	a, err := h.rt.Store.Resolve(*w)
+	if err != nil {
+		h.t.Fatalf("workspace %s has no usable secrets: %v", url, err)
 	}
 	return *w, a
 }
@@ -221,11 +231,14 @@ func TestWhoamiEmptyAndEnvironment(t *testing.T) {
 
 func TestAuthTest(t *testing.T) {
 	h := newHarness(t, nil)
-	if err := h.rt.Store.Upsert(
+	// Added on its own, acme is the default; zeta comes later.
+	for _, w := range []auth.Workspace{
 		browserWorkspace("https://acme.slack.com", "Acme", "xoxc-acme"),
 		browserWorkspace("https://zeta.slack.com", "Zeta", "xoxc-zeta"),
-	); err != nil {
-		t.Fatal(err)
+	} {
+		if err := h.rt.Store.Upsert(w); err != nil {
+			t.Fatal(err)
+		}
 	}
 	var tokens []string
 	handler := func(c *slackapi.Client) slackapi.Handler {
@@ -287,6 +300,143 @@ func TestAuthTestRefreshesExpiredCredentials(t *testing.T) {
 	})}
 	if _, err := h.run("", "test"); !slackapi.IsErrorCode(err, "invalid_auth") {
 		t.Errorf("err = %v, want invalid_auth", err)
+	}
+}
+
+// A workspace saved with a standard token keeps acting as that token: an
+// invalid_auth must not be "fixed" by importing the human's Slack Desktop
+// session over it and retrying as the human.
+func TestAuthTestNeverSwapsAStandardTokenForABrowserSession(t *testing.T) {
+	h := newHarness(t, nil)
+	h.mustRun("", "add", "--workspace-url", "https://acme.slack.com", "--token", "xoxb-revoked")
+	desktopCalls := 0
+	h.rt.Desktop = func(context.Context) (*authextract.Extracted, error) {
+		desktopCalls++
+		return extraction("Slack Desktop"), nil
+	}
+	var used []string
+	h.rt.ClientOptions = []slackapi.Option{func(c *slackapi.Client) {
+		slackapi.WithHandler(func(_ context.Context, method string, _ map[string]any) (map[string]any, error) {
+			used = append(used, c.Auth().BearerToken())
+			if c.Auth().IsBrowser() {
+				return map[string]any{"ok": true, "user": "the-human"}, nil
+			}
+			return nil, &slackapi.APIError{Method: method, Code: "token_revoked"}
+		})(c)
+	}}
+	out, err := h.run("", "test")
+	if !slackapi.IsErrorCode(err, "token_revoked") {
+		t.Fatalf("out = %q, err = %v; want token_revoked", out, err)
+	}
+	if fmt.Sprint(used) != "[xoxb-revoked]" || desktopCalls != 0 {
+		t.Errorf("tokens used = %v, Desktop extractions = %d", used, desktopCalls)
+	}
+	if _, a := h.stored("https://acme.slack.com"); a.Type != slackapi.AuthStandard || a.Token != "xoxb-revoked" {
+		t.Errorf("the stored token was replaced: %+v", a)
+	}
+
+	// An explicit bulk import keeps it too, and says so.
+	out = h.mustRun("", "import-desktop")
+	got := decodeJSON[struct {
+		Imported   int                 `json:"imported"`
+		Workspaces []importedWorkspace `json:"workspaces"`
+	}](t, out)
+	if got.Imported != 1 || len(got.Workspaces) != 1 || got.Workspaces[0].WorkspaceURL != "https://zeta.slack.com" {
+		t.Errorf("import-desktop printed %s", out)
+	}
+	if !strings.Contains(h.stderr.String(), "https://acme.slack.com keeps its standard token") {
+		t.Errorf("stderr = %q", h.stderr)
+	}
+	if _, a := h.stored("https://acme.slack.com"); a.Type != slackapi.AuthStandard {
+		t.Errorf("import-desktop replaced the standard token: %+v", a)
+	}
+}
+
+// With a browser token in the environment, the token and the cookie are
+// only ever sent to Slack, whatever --workspace or SLACK_WORKSPACE_URL say.
+func TestAuthTestNeverSendsEnvCredentialsToAnotherHost(t *testing.T) {
+	h := newHarness(t, nil)
+	t.Setenv("SLACK_TOKEN", "xoxc-env-secret")
+	t.Setenv("SLACK_COOKIE_D", "xoxd-env-secret")
+	var requests []string
+	h.rt.ClientOptions = []slackapi.Option{slackapi.WithHTTPClient(&http.Client{Transport: roundTripper(func(r *http.Request) (*http.Response, error) {
+		requests = append(requests, r.URL.String())
+		return &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"ok":true,"user":"mael"}`))}, nil
+	})})}
+
+	for _, target := range []string{
+		"http://attacker.example",
+		"https://attacker.example",
+		"attacker.example",
+		"http://acme.slack.com",
+		"https://acme.slack.com.attacker.example",
+		"https://acme.slack.com@attacker.example",
+	} {
+		for name, run := range map[string]func() (string, error){
+			"--workspace": func() (string, error) { return h.run("", "test", "--workspace", target) },
+			"SLACK_WORKSPACE_URL": func() (string, error) {
+				t.Setenv("SLACK_WORKSPACE_URL", target)
+				defer t.Setenv("SLACK_WORKSPACE_URL", "")
+				return h.run("", "test")
+			},
+		} {
+			out, err := run()
+			if err == nil || !strings.Contains(err.Error(), "https Slack workspace URL") {
+				t.Errorf("%s=%s: out = %q, err = %v", name, target, out, err)
+			}
+			if err != nil && strings.Contains(err.Error(), "secret") {
+				t.Errorf("%s=%s: the error leaks a secret: %v", name, target, err)
+			}
+		}
+	}
+	if len(requests) != 0 {
+		t.Fatalf("requests were sent: %v", requests)
+	}
+
+	// A real workspace URL still works.
+	h.mustRun("", "test", "--workspace", "https://acme.slack.com")
+	if fmt.Sprint(requests) != "[https://acme.slack.com/api/auth.test]" {
+		t.Errorf("requests = %v", requests)
+	}
+}
+
+type roundTripper func(*http.Request) (*http.Response, error)
+
+func (f roundTripper) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestWhoamiWithoutDefaultAndWithALockedKeychain(t *testing.T) {
+	kc := fakeKeychain{}
+	h := newHarness(t, kc)
+	h.rt.Desktop = func(context.Context) (*authextract.Extracted, error) { return extraction("Slack Desktop"), nil }
+	h.mustRun("", "import-desktop")
+	if !strings.Contains(h.stderr.String(), "no default workspace is set") || !strings.Contains(h.stderr.String(), "auth set-default") {
+		t.Errorf("import-desktop did not say that no default is set: %q", h.stderr)
+	}
+
+	got := decodeJSON[whoamiOutput](t, h.mustRun("", "whoami"))
+	if got.DefaultWorkspaceURL != "" || !strings.Contains(got.Hint, "auth set-default") {
+		t.Errorf("whoami = %+v", got)
+	}
+	for _, w := range got.Workspaces {
+		if w.Default {
+			t.Errorf("%s is shown as the default", w.WorkspaceURL)
+		}
+	}
+
+	h.mustRun("", "set-default", "zeta")
+	if strings.Contains(h.stderr.String(), "no default") {
+		t.Errorf("stderr = %q", h.stderr)
+	}
+	kc[unavailableKey] = "the keychain did not answer within 3s"
+	h.rt.Store = &auth.Store{Path: h.rt.Store.Path, Keychain: kc, Service: "svc"}
+	got = decodeJSON[whoamiOutput](t, h.mustRun("", "whoami"))
+	if got.DefaultWorkspaceURL != "https://zeta.slack.com" || got.Hint != "" || len(got.Workspaces) != 2 {
+		t.Fatalf("whoami = %+v", got)
+	}
+	for _, w := range got.Workspaces {
+		if w.Secrets != "unavailable" || !strings.Contains(w.Hint, "did not answer within 3s") || !strings.Contains(w.Hint, "SLACKCLI_KEYCHAIN_TIMEOUT_MS") || w.Token != "" {
+			t.Errorf("workspace = %+v", w)
+		}
 	}
 }
 
@@ -457,6 +607,10 @@ func TestAdd(t *testing.T) {
 	}{
 		{[]string{"add", "--token", "xoxb-1"}, "workspace-url"},
 		{[]string{"add", "--workspace-url", "nope", "--token", "xoxb-1"}, "--workspace-url must be a workspace URL"},
+		// Credentials are never saved for a host that is not Slack's.
+		{[]string{"add", "--workspace-url", "https://attacker.example", "--token", "xoxb-1"}, "only saved for, and sent to, https Slack workspaces"},
+		{[]string{"add", "--workspace-url", "http://acme.slack.com", "--xoxc", "xoxc-1", "--xoxd", "xoxd-1"}, "--workspace-url must be a workspace URL"},
+		{[]string{"add", "--workspace-url", "https://acme.slack.com.attacker.example", "--xoxc", "xoxc-1", "--xoxd", "xoxd-1"}, "--workspace-url must be a workspace URL"},
 		{[]string{"add", "--workspace-url", "https://x.slack.com"}, "provide either --token or both --xoxc and --xoxd"},
 		{[]string{"add", "--workspace-url", "https://x.slack.com", "--xoxc", "xoxc-1"}, "both --xoxc and --xoxd"},
 		{[]string{"add", "--workspace-url", "https://x.slack.com", "--xoxd", "xoxd-1"}, "both --xoxc and --xoxd"},

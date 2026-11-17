@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/maelvls/slackcli/internal/appinfo"
 	"github.com/maelvls/slackcli/internal/output"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
@@ -54,6 +55,14 @@ func (r *recorder) only(method string) []call {
 		if c.method == method {
 			out = append(out, c)
 		}
+	}
+	return out
+}
+
+func anySlice(ms []map[string]any) []any {
+	out := make([]any, len(ms))
+	for i, m := range ms {
+		out[i] = m
 	}
 	return out
 }
@@ -145,6 +154,12 @@ func (d directory) recorder() *recorder {
 					if m["id"] == params["user"] {
 						return map[string]any{"user": m}, nil
 					}
+				}
+			}
+			// Whoever posted exists, in the directory pages or not.
+			for handle, id := range d.posted {
+				if id == params["user"] {
+					return map[string]any{"user": member(id, handle)}, nil
 				}
 			}
 			return apiError("user_not_found"), nil
@@ -271,15 +286,54 @@ func TestResolveUserID(t *testing.T) {
 		}
 	})
 
-	t.Run("an unknown email does not trigger a directory scan", func(t *testing.T) {
-		rec := directory{pages: [][]map[string]any{{member("U02HANDLE0", "alice")}}}.recorder()
-		_, err := ResolveUserID(ctx, rec.client(), "nobody@example.com")
+	// users.lookupByEmail only knows active members: as the TypeScript
+	// did, look for a deactivated one in the directory before giving up.
+	t.Run("an email unknown to lookupByEmail is looked for in the directory", func(t *testing.T) {
+		gone := member("U05GONE000", "old-alice", "deleted", true, "profile", profile("email", "Gone@Example.com"))
+		rec := directory{pages: [][]map[string]any{
+			{member("U02HANDLE0", "alice")},
+			{gone},
+			{member("U06NEVER00", "never-reached")},
+		}}.recorder()
+		got, err := ResolveUserID(ctx, rec.client(), "gone@example.com")
+		if err != nil || got != "U05GONE000" {
+			t.Fatalf("got %q, %v, want the deactivated member", got, err)
+		}
+		// The scan stops at the deactivated member: no active one can
+		// have that address.
+		if !reflect.DeepEqual(rec.methods(), []string{"users.lookupByEmail", "users.list", "users.list"}) {
+			t.Errorf("methods = %v", rec.methods())
+		}
+		if user, err := GetUser(ctx, rec.client(), "gone@example.com"); err != nil || user.ID != "U05GONE000" || user.Deleted == nil || !*user.Deleted {
+			t.Errorf("GetUser = %+v, %v", user, err)
+		}
+
+		rec = directory{pages: [][]map[string]any{{member("U02HANDLE0", "alice")}}}.recorder()
+		_, err = ResolveUserID(ctx, rec.client(), "nobody@example.com")
 		var nf *NotFoundError
 		if !errors.As(err, &nf) || nf.Input != "nobody@example.com" {
 			t.Errorf("err = %v", err)
 		}
-		if !reflect.DeepEqual(rec.methods(), []string{"users.lookupByEmail"}) {
+		if !reflect.DeepEqual(rec.methods(), []string{"users.lookupByEmail", "users.list"}) {
 			t.Errorf("methods = %v", rec.methods())
+		}
+	})
+
+	t.Run("an email unknown to lookupByEmail in a workspace too large to scan", func(t *testing.T) {
+		rec := hugeWorkspace(directory{})
+		_, err := ResolveUserID(ctx, rec.client(), "gone@example.com")
+		var rl *slackapi.RateLimitError
+		var nf *NotFoundError
+		if !errors.As(err, &rl) || errors.As(err, &nf) {
+			t.Fatalf("err = %v, want a rate limit error and not a NotFoundError", err)
+		}
+		for _, want := range []string{`"gone@example.com"`, "no active member", "deactivated", "too large", "user ID (U…)", appinfo.EnvName("RATE_LIMIT_MAX_WAIT_MS")} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error does not mention %q: %v", want, err)
+			}
+		}
+		if strings.Contains(err.Error(), "or the email address instead") {
+			t.Errorf("error suggests passing an email for an email: %v", err)
 		}
 	})
 
@@ -613,6 +667,80 @@ func TestListUsers(t *testing.T) {
 		}
 		if !reflect.DeepEqual(names(page), []string{"alice"}) || page.NextCursor != "" {
 			t.Errorf("page = %v, cursor %q", names(page), page.NextCursor)
+		}
+	})
+
+	// Asking for exactly the number of users still wanted, as before,
+	// made one call per bot left out towards the end: 200, 20, 2, 1, 1…
+	t.Run("filtered bots do not cost one call each", func(t *testing.T) {
+		var members []map[string]any
+		for i := range 400 {
+			m := member(fmt.Sprintf("U%08d", i), fmt.Sprintf("user%d", i))
+			if i%10 == 9 {
+				m["is_bot"] = true
+			}
+			members = append(members, m)
+		}
+		rec := &recorder{serve: func(method string, params map[string]any) (map[string]any, error) {
+			if method != "users.list" {
+				return map[string]any{}, nil
+			}
+			start := 0
+			if c, _ := params["cursor"].(string); c != "" {
+				start, _ = strconv.Atoi(strings.TrimPrefix(c, "at"))
+			}
+			end := min(start+params["limit"].(int), len(members))
+			resp := map[string]any{"members": anySlice(members[start:end])}
+			if end < len(members) {
+				resp["response_metadata"] = map[string]any{"next_cursor": fmt.Sprintf("at%d", end)}
+			}
+			return resp, nil
+		}}
+		var got []string
+		cursor := ""
+		for range 10 {
+			page, err := ListUsers(ctx, rec.client(), ListOptions{Limit: 200, Cursor: cursor})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page.Users) > 200 {
+				t.Fatalf("%d users, more than the limit", len(page.Users))
+			}
+			got = append(got, names(page)...)
+			if cursor = page.NextCursor; cursor == "" {
+				break
+			}
+		}
+		// Every human exactly once, in order, across the pages.
+		var want []string
+		for i := range 400 {
+			if i%10 != 9 {
+				want = append(want, fmt.Sprintf("user%d", i))
+			}
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("%d users listed, want %d, each once and in order", len(got), len(want))
+		}
+		// 360 humans in pages of 200: the first page takes 2 calls (200,
+		// then 50 for the 20 still missing), the second resumes mid-page.
+		calls := rec.only("users.list")
+		if len(calls) > 5 {
+			t.Errorf("%d users.list calls, want at most 5", len(calls))
+		}
+		for _, c := range calls {
+			if c.params["limit"].(int) < minFilteredPageSize {
+				t.Errorf("users.list asked for %v members", c.params["limit"])
+			}
+		}
+	})
+
+	t.Run("malformed cursor", func(t *testing.T) {
+		rec := dir.recorder()
+		if _, err := ListUsers(ctx, rec.client(), ListOptions{Cursor: "offset-x:page1"}); err == nil || !strings.Contains(err.Error(), "next_cursor") {
+			t.Errorf("err = %v", err)
+		}
+		if len(rec.only("users.list")) != 0 {
+			t.Errorf("users.list was called")
 		}
 	})
 

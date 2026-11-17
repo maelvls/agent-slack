@@ -81,6 +81,7 @@ Prints JSON:
                message (author, content as Markdown, thread_ts, reply_count).
                When the message itself cannot be read (deleted, channel no
                longer visible), message is absent and message_error says why.
+               [] when there are none; absent with --counts-only.
   next_cursor  present when there may be more items: pass it to --cursor`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -112,7 +113,13 @@ Prints JSON:
 			if err != nil {
 				return err
 			}
-			return rt.Print(payload)
+			for _, w := range payload.Warnings {
+				rt.Hintf("Warning: %s", w)
+			}
+			if countsOnly {
+				return rt.Print(payload)
+			}
+			return cmdutil.PrintList(rt, payload, "items")
 		},
 	}
 	cmd.Flags().StringVar(&workspace, "workspace", "", clictx.WorkspaceFlagUsage)

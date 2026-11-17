@@ -49,11 +49,14 @@ type Context struct {
 
 	mu              sync.Mutex
 	disableWatchdog func()
+	// last is what Client resolved most recently (nil if it failed):
+	// WithAutoRefresh uses it to know whose credentials were rejected.
+	last *Resolved
 }
 
 // New returns the production context.
 func New() *Context {
-	return &Context{
+	c := &Context{
 		Store:   auth.DefaultStore(),
 		Stdout:  os.Stdout,
 		Stderr:  os.Stderr,
@@ -62,6 +65,8 @@ func New() *Context {
 		Brave:   authextract.Brave,
 		Firefox: authextract.Firefox,
 	}
+	c.Store.Warnf = c.Hintf
+	return c
 }
 
 // Print writes a command result to Stdout as pruned JSON.
@@ -76,7 +81,13 @@ func (c *Context) Hintf(format string, args ...any) {
 // SLACKCLI_SAFE_MODE): nothing may be posted, edited or deleted without a
 // human reviewing it. See SafeModeSummary for what it covers, and
 // CheckSafeMode to refuse a command.
-func (c *Context) SafeMode() bool { return c.SafeModeFlag || appinfo.EnvBool("SAFE_MODE") }
+//
+// It fails closed. The flag and the environment can each turn it on and
+// neither can turn it off for the other: --safe-mode=false does not undo
+// SLACKCLI_SAFE_MODE=1. In the environment, anything but an explicit off
+// value ("", "0", "false", "no", "off") means on, under the current or the
+// legacy AGENT_SLACK_ name (see appinfo.SafeModeEnv).
+func (c *Context) SafeMode() bool { return c.SafeModeFlag || appinfo.SafeModeEnv() }
 
 // EffectiveWorkspace returns the workspace selector to use: the --workspace
 // flag if set, else SLACK_WORKSPACE_URL, else "".
@@ -173,19 +184,38 @@ func (c *Context) AssertWorkspaceForChannelNames(workspace string, channels ...s
 	if err != nil {
 		return err
 	}
-	if len(creds.Workspaces) <= 1 || creds.DefaultWorkspaceURL != "" {
+	if len(creds.Workspaces) <= 1 || creds.Default() != nil {
 		return nil
 	}
-	return fmt.Errorf(`ambiguous channel name across multiple workspaces: pass --workspace "<url-or-unique-substring>" (or set SLACK_WORKSPACE_URL, or run "%s auth set-default <url>")`, appinfo.Name)
+	return fmt.Errorf("ambiguous channel name across multiple workspaces: %s", chooseWorkspaceAdvice(creds.Workspaces))
 }
 
-// WithAutoRefresh runs work and, if it fails because stored credentials
-// have expired, re-imports them from Slack Desktop and runs work once more.
-// work must obtain its client through Context.Client so that the retry
-// picks up the refreshed credentials.
+// chooseWorkspaceAdvice lists the configured workspaces and the ways to
+// say which one is meant, for errors raised when nothing does.
+func chooseWorkspaceAdvice(workspaces []auth.Workspace) string {
+	urls := make([]string, len(workspaces))
+	for i, w := range workspaces {
+		urls[i] = w.URL
+	}
+	return fmt.Sprintf(`%d workspaces are configured (%s) and none is the default. Pass --workspace "<url-or-unique-substring>", set SLACK_WORKSPACE_URL, or choose a default with "%s auth set-default <url>"`,
+		len(urls), strings.Join(urls, ", "), appinfo.Name)
+}
+
+// WithAutoRefresh runs work and, if it fails because the browser session
+// stored for a workspace has expired, re-imports that workspace from Slack
+// Desktop and runs work once more. work must obtain its client through
+// Context.Client: that is how the refresh knows which credentials were
+// rejected, and how the retry picks up the new ones.
+//
+// The retry must act as the same identity, so nothing is refreshed, and
+// the original error is returned, when the rejected credentials are a
+// standard token (xoxb-/xoxp-: a bot must never be replaced by the human
+// signed in to Slack Desktop) or come from SLACK_TOKEN, when Slack Desktop
+// is not signed in to that workspace, or when what it holds is what was
+// just rejected.
 func WithAutoRefresh[T any](ctx context.Context, c *Context, work func() (T, error)) (T, error) {
 	v, err := work()
-	if err == nil || !slackapi.IsAuthError(err) || EnvAuthConfigured() {
+	if err == nil || !slackapi.IsAuthError(err) {
 		return v, err
 	}
 	if !c.refreshFromDesktop(ctx) {
@@ -194,20 +224,51 @@ func WithAutoRefresh[T any](ctx context.Context, c *Context, work func() (T, err
 	return work()
 }
 
+// refreshFromDesktop replaces the stored browser session that Client
+// resolved last with the one Slack Desktop holds for the same workspace. It
+// reports whether the stored credentials changed.
 func (c *Context) refreshFromDesktop(ctx context.Context) bool {
-	if c.Desktop == nil {
+	c.mu.Lock()
+	failed := c.last
+	c.mu.Unlock()
+	if failed == nil || !failed.fromStore || !failed.Auth.IsBrowser() || c.Desktop == nil {
 		return false
 	}
 	extracted, err := c.Desktop(ctx)
-	if err != nil || extracted == nil || len(extracted.Teams) == 0 {
+	if err != nil || extracted == nil {
 		return false
 	}
-	return c.Import(extracted) == nil
+	for _, w := range workspacesFrom(extracted, extracted.Teams) {
+		if w.URL != failed.WorkspaceURL {
+			continue
+		}
+		if w.Auth == failed.Auth {
+			return false // the same session: retrying would fail again
+		}
+		// UpsertImported re-reads the file: if the workspace now holds a
+		// standard token, it is kept and nothing is retried.
+		kept, err := c.Store.UpsertImported(w)
+		return err == nil && len(kept) == 0
+	}
+	return false
 }
 
-// Import saves every team of an extraction as a browser-auth workspace.
-func (c *Context) Import(e *authextract.Extracted) error {
-	return c.Store.Upsert(workspacesFrom(e, e.Teams)...)
+// Import saves the teams of an extraction as browser-auth workspaces. It
+// adds new workspaces and refreshes those stored with a browser session.
+//
+// A workspace stored with a standard token (xoxb-/xoxp-, from "auth add")
+// is only replaced when replaceStandard is true, which is for credentials
+// the user gave for that very workspace ("auth parse-curl"). A bulk import
+// ("auth import-desktop" and the like, or the automatic lookup) passes
+// false: it keeps such workspaces as they are and returns their URLs in
+// kept, because swapping a bot token for the user's own session changes
+// who commands act as.
+func (c *Context) Import(e *authextract.Extracted, replaceStandard bool) (kept []string, err error) {
+	workspaces := workspacesFrom(e, e.Teams)
+	if replaceStandard {
+		return nil, c.Store.Upsert(workspaces...)
+	}
+	return c.Store.UpsertImported(workspaces...)
 }
 
 func workspacesFrom(e *authextract.Extracted, teams []authextract.Team) []auth.Workspace {

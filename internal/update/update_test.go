@@ -216,8 +216,9 @@ func TestInstallMethod(t *testing.T) {
 		{"go install of a tag", "/home/me/go/bin/" + appinfo.Name, "dev", "v1.0.0", MethodGoInstall, "go install github.com/acme/tool/cmd/" + appinfo.Name + "@latest"},
 		{"go build in a checkout", "/src/" + appinfo.Name, "dev", "(devel)", MethodSource, "go install github.com/acme/tool/cmd/" + appinfo.Name + "@latest"},
 		{"go install of a commit", "/home/me/go/bin/" + appinfo.Name, "dev", "v1.0.1-0.20260102150405-0123456789ab", MethodSource, "go install github.com/acme/tool/cmd/" + appinfo.Name + "@latest"},
-		{"homebrew", "/opt/homebrew/Cellar/" + appinfo.Name + "/1.0.0/bin/" + appinfo.Name, "v1.0.0", "", MethodHomebrew, "brew upgrade " + appinfo.Name},
-		{"nix", "/nix/store/abc-" + appinfo.Name + "-1.0.0/bin/" + appinfo.Name, "v1.0.0", "", MethodNix, "nix profile upgrade " + appinfo.Name},
+		// No formula or flake is published: there is no command to name.
+		{"homebrew", "/opt/homebrew/Cellar/" + appinfo.Name + "/1.0.0/bin/" + appinfo.Name, "v1.0.0", "", MethodHomebrew, ""},
+		{"nix", "/nix/store/abc-" + appinfo.Name + "-1.0.0/bin/" + appinfo.Name, "v1.0.0", "", MethodNix, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -234,7 +235,53 @@ func TestInstallMethod(t *testing.T) {
 			if cmd := u.UpdateCommand(got); cmd != tt.wantCommand {
 				t.Errorf("UpdateCommand(%q) = %q, want %q", got, cmd, tt.wantCommand)
 			}
+			advice := u.UpdateAdvice(got)
+			if tt.wantCommand != "" {
+				if advice != "run: "+tt.wantCommand {
+					t.Errorf("UpdateAdvice(%q) = %q", got, advice)
+				}
+				return
+			}
+			// Commands that do not exist are not advertised; the two ways
+			// of installing that do exist are.
+			for _, want := range []string{
+				"reinstall it the way it was installed",
+				"curl -fsSL https://raw.githubusercontent.com/acme/tool/main/install.sh | sh",
+				"go install github.com/acme/tool/cmd/" + appinfo.Name + "@latest",
+			} {
+				if !strings.Contains(advice, want) {
+					t.Errorf("UpdateAdvice(%q) = %q, want it to contain %q", got, advice, want)
+				}
+			}
+			for _, bogus := range []string{"brew upgrade", "brew install", "nix profile"} {
+				if strings.Contains(advice, bogus) {
+					t.Errorf("UpdateAdvice(%q) = %q names %q, which does not exist", got, advice, bogus)
+				}
+			}
 		})
+	}
+}
+
+// A "go install …@v1.2.3" build shows its module version, but it is not a
+// release binary: "update" must not overwrite ~/go/bin with one.
+func TestGoInstallBuildIsNotAReleaseBinary(t *testing.T) {
+	old := appinfo.Version
+	t.Cleanup(func() { appinfo.Version = old })
+	// What appinfo's init does for such a build: no ldflags, so the
+	// version comes from the module metadata.
+	appinfo.Version = "v1.2.3"
+
+	u := New()
+	if u.Version != DevVersion {
+		t.Fatalf("New().Version = %q, want %q: only an ldflags-stamped version makes a release binary", u.Version, DevVersion)
+	}
+	u.ModuleVersion = "v1.2.3"
+	u.Executable = func() (string, error) { return "/home/me/go/bin/" + appinfo.Name, nil }
+	if got := u.InstallMethod(); got != MethodGoInstall {
+		t.Errorf("InstallMethod() = %q, want %q", got, MethodGoInstall)
+	}
+	if got := u.CurrentVersion(); got != "1.2.3" {
+		t.Errorf("CurrentVersion() = %q", got)
 	}
 }
 

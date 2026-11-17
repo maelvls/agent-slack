@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -343,4 +344,33 @@ func FuzzParse(f *testing.F) {
 		parseTable(data, nil, nil) // must not panic
 		parseLog(data, nil, nil)
 	})
+}
+
+// A snappy block announces its decoded length, which the decoder allocates
+// up front: a corrupted (or hostile) length must be refused before that.
+func TestReadBlockDoesNotAllocateTheClaimedLength(t *testing.T) {
+	// A 5-byte block claiming to decode to 200 MiB.
+	contents := binary.AppendUvarint(nil, 200<<20)
+	contents = append(contents, 0x00, 'x')
+	data := append(bytes.Clone(contents), compressionSnappy, 0, 0, 0, 0)
+
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	_, err := readBlock(data, blockHandle{offset: 0, size: uint64(len(contents))})
+	runtime.ReadMemStats(&after)
+	if err == nil {
+		t.Error("no error for a block that cannot decode to its claimed length")
+	}
+	if allocated := after.TotalAlloc - before.TotalAlloc; allocated > 1<<20 {
+		t.Errorf("readBlock allocated %d MiB for a %d-byte block", allocated>>20, len(contents))
+	}
+
+	// The most compressible data there is still reads.
+	zeros := make([]byte, 1<<20)
+	packed := snappy.Encode(nil, zeros)
+	data = append(bytes.Clone(packed), compressionSnappy, 0, 0, 0, 0)
+	got, err := readBlock(data, blockHandle{offset: 0, size: uint64(len(packed))})
+	if err != nil || !bytes.Equal(got, zeros) {
+		t.Errorf("1 MiB of zeros (%d bytes compressed): %d bytes, %v", len(packed), len(got), err)
+	}
 }

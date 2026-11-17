@@ -7,6 +7,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/maelvls/slackcli/internal/jsonx"
@@ -82,6 +84,15 @@ const (
 	// listPageSize is the users.list page size ListUsers asks for, as
 	// Slack recommends.
 	listPageSize = 200
+	// minFilteredPageSize is the smallest page asked for when bots are
+	// left out. How many members of a page are bots is not known in
+	// advance: asking for exactly the number of users still wanted would
+	// end in a series of calls for 3, 2, then 1 member, each of them
+	// counting against the rate limit of users.list.
+	minFilteredPageSize = 50
+	// cursorOffsetPrefix marks a ListUsers cursor that resumes inside a
+	// users.list page: "offset-<n>:<Slack cursor>".
+	cursorOffsetPrefix = "offset-"
 )
 
 // ListOptions selects a page of users.
@@ -89,7 +100,8 @@ type ListOptions struct {
 	// Limit is the number of users to return: 0 means 200; values are
 	// clamped to 1..1000.
 	Limit int
-	// Cursor is the NextCursor of the previous page.
+	// Cursor is the NextCursor of the previous page. It is opaque: not
+	// always a cursor that users.list itself would accept.
 	Cursor string
 	// IncludeBots also lists bot users.
 	IncludeBots bool
@@ -103,6 +115,29 @@ type UsersPage struct {
 	NextCursor string `json:"next_cursor,omitempty"`
 }
 
+// encodeCursor builds the cursor that resumes offset members into the
+// users.list page that slackCursor yields. Slack's cursors only move by
+// whole pages, while a listing stops wherever its limit is reached.
+func encodeCursor(slackCursor string, offset int) string {
+	if offset == 0 {
+		return slackCursor
+	}
+	return cursorOffsetPrefix + strconv.Itoa(offset) + ":" + slackCursor
+}
+
+func decodeCursor(cursor string) (slackCursor string, offset int, err error) {
+	rest, ok := strings.CutPrefix(cursor, cursorOffsetPrefix)
+	if !ok {
+		return cursor, 0, nil
+	}
+	n, slackCursor, ok := strings.Cut(rest, ":")
+	offset, convErr := strconv.Atoi(n)
+	if !ok || convErr != nil || offset < 0 {
+		return "", 0, fmt.Errorf("invalid cursor %q: pass the next_cursor value of the previous page", cursor)
+	}
+	return slackCursor, offset, nil
+}
+
 // ListUsers lists workspace members (users.list), deactivated ones
 // included, each with the ID of the caller's existing DM with them when
 // there is one.
@@ -112,17 +147,28 @@ func ListUsers(ctx context.Context, client *slackapi.Client, opts ListOptions) (
 		limit = defaultListLimit
 	}
 	limit = min(limit, maxListLimit)
+	cursor, skip, err := decodeCursor(opts.Cursor)
+	if err != nil {
+		return UsersPage{}, err
+	}
+	listed := func(m map[string]any) bool {
+		return jsonx.Str(m["id"]) != "" && (opts.IncludeBots || !jsonx.Bool(m["is_bot"]))
+	}
 
 	dms := make(chan map[string]string, 1)
 	go func() { dms <- dmChannels(ctx, client) }()
 
 	page := UsersPage{}
-	cursor := opts.Cursor
-	for len(page.Users) < limit {
-		// Never ask for more than is still wanted: users left over on a
-		// page could not be resumed from, the cursor only moves by whole
-		// pages.
-		params := map[string]any{"limit": min(listPageSize, limit-len(page.Users))}
+paging:
+	for {
+		// Ask for what is still wanted, but not for a handful of members
+		// at a time when some of them will be filtered out: the listing
+		// can stop, and later resume, in the middle of a page.
+		size := limit - len(page.Users)
+		if !opts.IncludeBots {
+			size = max(size, minFilteredPageSize)
+		}
+		params := map[string]any{"limit": min(size, listPageSize)}
 		if cursor != "" {
 			params["cursor"] = cursor
 		}
@@ -130,12 +176,7 @@ func ListUsers(ctx context.Context, client *slackapi.Client, opts ListOptions) (
 		if err != nil {
 			return UsersPage{}, err
 		}
-		for _, m := range jsonx.Maps(resp["members"]) {
-			if jsonx.Str(m["id"]) == "" || (!opts.IncludeBots && jsonx.Bool(m["is_bot"])) {
-				continue
-			}
-			page.Users = append(page.Users, ToCompactUser(m))
-		}
+		members := jsonx.Maps(resp["members"])
 		// The cursor Slack returned with the last page fetched is the only
 		// correct place to resume from: "" once the directory is exhausted.
 		next := nextCursor(resp)
@@ -143,10 +184,27 @@ func ListUsers(ctx context.Context, client *slackapi.Client, opts ListOptions) (
 			next = ""
 		}
 		page.NextCursor = next
+		for i := min(skip, len(members)); i < len(members); i++ {
+			if !listed(members[i]) {
+				continue
+			}
+			page.Users = append(page.Users, ToCompactUser(members[i]))
+			if len(page.Users) < limit {
+				continue
+			}
+			// Full: resume right after this member, unless nothing is
+			// left of this page.
+			if slices.ContainsFunc(members[i+1:], listed) {
+				page.NextCursor = encodeCursor(cursor, i+1)
+			}
+			break paging
+		}
 		if next == "" {
 			break
 		}
-		cursor = next
+		// A resumed page may be shorter than the one the offset was
+		// counted in: what is left to skip carries over.
+		cursor, skip = next, max(skip-len(members), 0)
 	}
 
 	dmByUser := <-dms

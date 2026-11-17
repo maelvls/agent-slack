@@ -158,7 +158,13 @@ func (s *searcher) refs(ctx context.Context, matches []map[string]any, seen map[
 func (s *searcher) fetch(ctx context.Context, refs []ref) ([]messages.Message, error) {
 	out := make([]messages.Message, len(refs))
 	err := forEach(ctx, len(refs), fetchConcurrency, func(ctx context.Context, i int) error {
-		msg, err := messages.FetchMessage(ctx, s.client, refs[i].MessageRef, false)
+		var msg messages.Message
+		// The rate limit that stopped the fetching, if any.
+		_, err := s.fetchLimited.Skipped()
+		if err == nil {
+			msg, err = messages.FetchMessage(ctx, s.client, refs[i].MessageRef, false)
+			s.fetchLimited.Failed(err)
+		}
 		switch {
 		case err == nil:
 			out[i] = msg

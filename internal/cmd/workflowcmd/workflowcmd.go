@@ -43,7 +43,7 @@ func newList(rt *clictx.Context) *cobra.Command {
 
 Prints {"channel_id", "workflows": [{"title", "trigger_id", "link"?,
 "app_id"?, "featured"}]}: bookmarked workflows first, then featured ones
-that are not bookmarked. If Slack refuses the featured-workflows lookup
+that are not bookmarked; "workflows" is [] when there are none. If Slack refuses the featured-workflows lookup
 (not every workspace or token has it), only bookmarked workflows are
 listed and a warning is printed on stderr. No side effects.`,
 		Args: cobra.ExactArgs(1),
@@ -62,7 +62,7 @@ listed and a warning is printed on stderr. No side effects.`,
 			if payload.FeaturedErr != nil {
 				rt.Hintf("Warning: featured workflows could not be listed (%v); only bookmarked workflows are shown.", payload.FeaturedErr)
 			}
-			return rt.Print(payload)
+			return cmdutil.PrintList(rt, payload, "workflows")
 		},
 	}
 	clictx.AddWorkspaceFlag(cmd, &workspace)

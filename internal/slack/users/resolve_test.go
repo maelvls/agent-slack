@@ -37,7 +37,10 @@ func TestResolveUserIDBySearch(t *testing.T) {
 			if err != nil || got != "U00000001A" {
 				t.Fatalf("ResolveUserID(%q) = %q, %v", in, got, err)
 			}
-			want := []call{{"search.messages", map[string]any{"query": "from:@alice", "count": searchResults, "sort": "timestamp", "sort_dir": "desc"}}}
+			want := []call{
+				{"search.messages", map[string]any{"query": "from:@alice", "count": searchResults, "sort": "timestamp", "sort_dir": "desc"}},
+				{"users.info", map[string]any{"user": "U00000001A"}},
+			}
 			if !reflect.DeepEqual(rec.calls, want) {
 				t.Errorf("ResolveUserID(%q): calls = %v", in, rec.calls)
 			}
@@ -65,6 +68,49 @@ func TestResolveUserIDBySearch(t *testing.T) {
 		rec = hugeWorkspace(directory{nearMisses: nearMisses[:2], posted: map[string]string{"alice": "U00000001A"}})
 		if got, err := ResolveUserID(ctx, rec.client(), "@alice"); err != nil || got != "U00000001A" {
 			t.Errorf("behind near misses: got %q, %v", got, err)
+		}
+	})
+
+	// The ID found is DMed, invited and searched for: a message that only
+	// claims to be from that handle must not decide who that is.
+	t.Run("an integration posting under that username is not the user", func(t *testing.T) {
+		impostors := []map[string]any{
+			{"user": "U0000BOT01", "username": "alice", "bot_id": "B00000001"},
+			{"user": "U0000BOT02", "username": "alice", "subtype": "bot_message"},
+		}
+		rec := directory{nearMisses: impostors, pages: [][]map[string]any{{alice}}}.recorder()
+		got, err := ResolveUserID(ctx, rec.client(), "@alice")
+		if err != nil || got != "U00000001A" {
+			t.Errorf("got %q, %v, want the alice of the directory", got, err)
+		}
+		if !reflect.DeepEqual(rec.methods(), []string{"search.messages", "users.list"}) {
+			t.Errorf("methods = %v", rec.methods())
+		}
+	})
+
+	t.Run("the author of the match must really have that handle", func(t *testing.T) {
+		// A message with a forged username and a user field, from a user
+		// whose handle is something else.
+		mallory := member("U0000MAL01", "mallory")
+		forged := []map[string]any{{"user": "U0000MAL01", "username": "alice"}}
+		rec := directory{nearMisses: forged, pages: [][]map[string]any{{mallory, alice}}}.recorder()
+		got, err := ResolveUserID(ctx, rec.client(), "@alice")
+		if err != nil || got != "U00000001A" {
+			t.Errorf("got %q, %v, want the alice of the directory", got, err)
+		}
+		// One confirmation, however many matches: the lookup stays O(1).
+		if !reflect.DeepEqual(rec.methods(), []string{"search.messages", "users.info", "users.list"}) {
+			t.Errorf("methods = %v", rec.methods())
+		}
+
+		// A confirmation that cannot be made is no confirmation.
+		rec = directory{posted: map[string]string{"alice": "U0000MAL01"}, failInfoWith: "user_not_found", pages: [][]map[string]any{{alice}}}.recorder()
+		if got, err := ResolveUserID(ctx, rec.client(), "@alice"); err != nil || got != "U00000001A" {
+			t.Errorf("unconfirmed: got %q, %v", got, err)
+		}
+		rec = directory{posted: map[string]string{"alice": "U00000001A"}, failInfoWith: "invalid_auth"}.recorder()
+		if _, err := ResolveUserID(ctx, rec.client(), "@alice"); !slackapi.IsAuthError(err) {
+			t.Errorf("dead credentials during the confirmation: err = %v", err)
 		}
 	})
 

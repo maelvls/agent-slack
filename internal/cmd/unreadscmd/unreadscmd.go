@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/unreads"
 )
 
@@ -82,7 +83,10 @@ a bot or user token.`,
 			if err != nil {
 				return err
 			}
-			return rt.Print(payload)
+			for _, w := range payload.Warnings {
+				rt.Hintf("Warning: %s", w)
+			}
+			return cmdutil.PrintList(rt, payload, "channels")
 		},
 	}
 	clictx.AddWorkspaceFlag(cmd, &workspace)

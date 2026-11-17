@@ -73,7 +73,8 @@ func TestDownloadFailureIsRecorded(t *testing.T) {
 	if got["F2"] != want {
 		t.Errorf("result = %+v\nwant %+v", got["F2"], want)
 	}
-	if !strings.Contains(h.stderr.String(), "Warning: skipping file F2: Failed to download file (404)") {
+	// The file is not skipped: it stays in the output, with the error.
+	if !strings.Contains(h.stderr.String(), "Warning: could not download file F2: Failed to download file (404)") || strings.Contains(h.stderr.String(), "skipping") {
 		t.Errorf("stderr = %q", h.stderr.String())
 	}
 }

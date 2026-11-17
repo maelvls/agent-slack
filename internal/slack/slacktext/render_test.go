@@ -400,6 +400,8 @@ func TestRichTextRoundTrip(t *testing.T) {
 		"> quoted _text_\n> more",
 		"```\ncode < here\n  indented\n```",
 		"see <https://example.com|the docs> and <@U12345678> in <#C12345678>",
+		"at <!date^1392734382^{date_short} at {time}^https://example.com/x|Feb 18> :wave::skin-tone-3: see https://example.com/a_b",
+		"```\nmake\nmake install\n```",
 	} {
 		blocks := TextToRichTextBlocksInline(text)
 		if blocks == nil {
@@ -409,4 +411,22 @@ func TestRichTextRoundTrip(t *testing.T) {
 		back := MrkdwnFromRichTextBlock(blocks[0].(map[string]any))
 		assertEqual(t, back, text)
 	}
+}
+
+// A forged block must not make the renderer allocate without bound.
+func TestRichTextListClampsSizesFromJSON(t *testing.T) {
+	msg := object(t, `{"blocks": [{"type": "rich_text", "elements": [
+		{"type": "rich_text_list", "style": "bullet", "elements": [
+			{"type": "rich_text_section", "elements": [{"type": "text", "text": "top"}]}
+		]},
+		{"type": "rich_text_list", "style": "ordered", "indent": 9000000000000000000, "offset": 9223372036854775807, "elements": [
+			{"type": "rich_text_section", "elements": [{"type": "text", "text": "deep\nitem"}]}
+		]},
+		{"type": "rich_text_list", "style": "bullet", "indent": -5, "offset": -7, "elements": [
+			{"type": "rich_text_section", "elements": [{"type": "text", "text": "shallow"}]}
+		]}
+	]}]}`)
+	pad := strings.Repeat("    ", 8)
+	want := "- top\n" + pad + "1000001. deep\n" + pad + "         item\n- shallow"
+	assertEqual(t, RenderMessageContent(msg), want)
 }

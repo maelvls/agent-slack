@@ -295,7 +295,7 @@ func (c *command) listThread(ctx context.Context, target cmdutil.Target, rootTS 
 	if err != nil {
 		return err
 	}
-	return c.rt.Print(result)
+	return cmdutil.PrintList(c.rt, result, "messages")
 }
 
 func (c *command) listHistory(ctx context.Context, target cmdutil.Target, opts listOptions) error {
@@ -351,7 +351,7 @@ func (c *command) listHistory(ctx context.Context, target cmdutil.Target, opts l
 	if len(result.Messages) == 0 {
 		c.rt.Hintf("No messages matched in %s.", describeRange(oldest, latest))
 	}
-	return c.rt.Print(result)
+	return cmdutil.PrintList(c.rt, result, "messages")
 }
 
 var historyBoundRe = regexp.MustCompile(`^\d+(\.\d+)?$`)
@@ -367,7 +367,7 @@ func parseHistoryBound(flag, raw string) (string, error) {
 }
 
 // describeRange words the --oldest/--latest window for the "no messages"
-// hint, which otherwise reads as an unexplained {"channel_id": …}.
+// hint, which says why "messages" is empty.
 func describeRange(oldest, latest string) string {
 	var parts []string
 	if oldest != "" {

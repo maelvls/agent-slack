@@ -22,8 +22,9 @@ func newCreate(rt *clictx.Context) *cobra.Command {
 Without --channel the canvas is standalone (visible to you until you share
 it). With --channel it is added as a tab of that channel; this is the only
 kind of canvas free Slack plans allow, and it requires a standard token
-(SLACK_TOKEN) with the canvases:write scope. Imported browser credentials can
-create standalone canvases only.
+(xoxb-/xoxp-, from SLACK_TOKEN or saved with "auth add") with the
+canvases:write scope. Imported browser credentials can create standalone
+canvases only.
 
 Prints {"canvas": {"id", "title"?, "channel_id"?}}; "id" (F…) is what
 "canvas get" and "canvas edit" take. This is a write action: it is blocked

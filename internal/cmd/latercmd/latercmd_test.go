@@ -445,8 +445,14 @@ func TestAmbiguousChannelNameAcrossWorkspaces(t *testing.T) {
 	if out != nil || len(h.calls) != 0 {
 		t.Errorf("printed %v, made calls %+v", out, h.calls)
 	}
-	if _, err := h.run("save", "C12345678", "--ts", "1700000000.000100"); err != nil {
-		t.Errorf("a channel ID is not ambiguous: %v", err)
+	// A channel ID does not say which workspace it is in either: the
+	// client lookup refuses to guess one.
+	out, err = h.run("save", "C12345678", "--ts", "1700000000.000100")
+	if err == nil || !strings.Contains(err.Error(), "cannot tell which workspace to use") {
+		t.Errorf("err = %v, want a request for --workspace", err)
+	}
+	if out != nil || len(h.calls) != 0 {
+		t.Errorf("printed %v, made calls %+v", out, h.calls)
 	}
 	h.serve = func(method string, _ map[string]any) map[string]any {
 		if method == "search.messages" {

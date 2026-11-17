@@ -7,7 +7,7 @@ func TestFormatOutboundText(t *testing.T) {
 		name, in, want string
 	}{
 		{"bare user ID", "@U05BRPTKL6A heads up", "<@U05BRPTKL6A> heads up"},
-		{"bare W and B IDs", "cc @W123456A and @BABCDEFG", "cc <@W123456A> and <@BABCDEFG>"},
+		{"bare W ID and old 9-character ID", "cc @W1234567A and (@U024BE7LH)", "cc <@W1234567A> and (<@U024BE7LH>)"},
 		{"formatted mention", "hi <@U123456A>!", "hi <@U123456A>!"},
 		{"formatted mention with label", "hi <@U123456A|nick>!", "hi <@U123456A|nick>!"},
 		{"formatted usergroup with label", "ping <!subteam^S12345678|@team>", "ping <!subteam^S12345678|@team>"},
@@ -36,6 +36,46 @@ func TestFormatOutboundText(t *testing.T) {
 		{"unterminated backtick is text", "it`s @here", "it`s <!here>"},
 		{"NUL bytes are harmless", "a\x000\x00 & b", "a\x000\x00 &amp; b"},
 		{"multibyte text", "héllo @here — «ça» > là", "héllo <!here> — «ça» &gt; là"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assertEqual(t, FormatOutboundText(tt.in), tt.want)
+		})
+	}
+}
+
+// Text that only looks like a mention must not notify anyone, nor break
+// the URL it is part of.
+func TestFormatOutboundTextLeavesNonMentions(t *testing.T) {
+	for _, text := range []string{
+		"see https://medium.com/@channel/post-1",
+		"watch https://www.youtube.com/@UNBOXTHERAPY now",
+		"https://example.com/@here",
+		"https://example.com/u/@U05BRPTKL6A/profile",
+		"http://example.com/?to=@everyone",
+		"(https://x.test/@here)",
+		"the @WEBHOOKS and @USERNAME fields",
+		"@UNBOXTHERAPY and @WORKSPACES",
+		"@BABCDEFG1 is a bot ID, not a user",
+		"mail bob@here.com or x@channel.io",
+		"alice@U05BRPTKL6A.example",
+		"follow @here.com and @channel.io",
+		"twitter.com/@everyone",
+		"a/@here b.@channel c@@everyone",
+		"@here-and-now",
+		"@U123 and @hereafter",
+	} {
+		assertEqual(t, FormatOutboundText(text), text)
+	}
+
+	tests := []struct {
+		name, in, want string
+	}{
+		{"mention next to a URL", "@here see https://medium.com/@channel/post-1 @channel", "<!here> see https://medium.com/@channel/post-1 <!channel>"},
+		{"end of sentence", "ping @here. Thanks @U05BRPTKL6A!", "ping <!here>. Thanks <@U05BRPTKL6A>!"},
+		{"after opening punctuation", `(@here) [@channel] "@everyone" cc:@U05BRPTKL6A, *@here*`, `(<!here>) [<!channel>] "<!everyone>" cc:<@U05BRPTKL6A>, *<!here>*`},
+		{"on a new line", "hello\n@channel\n\t@U05BRPTKL6A", "hello\n<!channel>\n\t<@U05BRPTKL6A>"},
+		{"after a quote marker", "> @here", "&gt; <!here>"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

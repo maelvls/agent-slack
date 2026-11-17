@@ -59,9 +59,11 @@ func TestScheduledListValidation(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"scheduled", "list", "--limit", "abc"}, `invalid --limit value "abc"`},
-		{[]string{"scheduled", "list", "--limit", "0"}, "must be a positive integer"},
-		{[]string{"scheduled", "list", "--limit", ""}, "must be a positive integer"},
+		// --limit is an integer flag, validated like on every other command.
+		{[]string{"scheduled", "list", "--limit", "abc"}, `invalid argument "abc" for "--limit" flag`},
+		{[]string{"scheduled", "list", "--limit", "0"}, "invalid --limit value 0: must be a positive integer"},
+		{[]string{"scheduled", "--limit", "-2"}, "invalid --limit value -2: must be a positive integer"},
+		{[]string{"scheduled", "list", "--limit", ""}, `invalid argument "" for "--limit" flag`},
 		{[]string{"scheduled", "list", "--oldest", "yesterday"}, "invalid --oldest"},
 		{[]string{"scheduled", "list", "--channel", ""}, "--channel needs a value"},
 		{[]string{"scheduled", "list", "--channel", "https://example.com/x"}, "--channel: unsupported target URL"},
@@ -73,6 +75,37 @@ func TestScheduledListValidation(t *testing.T) {
 			t.Errorf("%v: Slack was called", tt.args)
 		}
 	}
+}
+
+// "scheduled_messages" is printed even when nothing is scheduled.
+func TestScheduledListWithNothingScheduled(t *testing.T) {
+	h := newHarness(t)
+	for _, args := range [][]string{{"scheduled", "list"}, {"scheduled"}, {"scheduled", "list", "--channel", testChannel}} {
+		h.mustRun(args...)
+		if want := "{\n  \"ok\": true,\n  \"scheduled_messages\": []\n}\n"; h.stdout.String() != want {
+			t.Errorf("%v printed %s, want %s", args, h.stdout, want)
+		}
+	}
+	for _, name := range []string{"scheduled", "list"} {
+		cmd := findCommand(t, h.command(), "scheduled")
+		if name == "list" {
+			cmd = findCommand(t, h.command(), "scheduled", "list")
+		}
+		if typ := cmd.Flags().Lookup("limit").Value.Type(); typ != "int" {
+			t.Errorf("%s --limit is a %s flag, want int", name, typ)
+		}
+	}
+}
+
+// Cancelling deletes a message a human scheduled: refused in safe mode,
+// before anything is looked up.
+func TestSafeModeRefusesScheduledCancel(t *testing.T) {
+	h := newHarness(t)
+	h.rt.SafeModeFlag = true
+	h.mustFail(`"message scheduled cancel" is blocked`, "scheduled", "cancel", "Q1234ABCD", "--channel", "#general")
+	h.wantCalls()
+	// Listing them is reading.
+	h.mustRun("scheduled", "list")
 }
 
 func TestScheduledCancel(t *testing.T) {

@@ -4,15 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/maelvls/slackcli/internal/clictx"
+	"github.com/maelvls/slackcli/internal/cmd/cmdutil"
 	"github.com/maelvls/slackcli/internal/slack/channeladmin"
-	"github.com/maelvls/slackcli/internal/slack/channels"
 	"github.com/maelvls/slackcli/internal/slack/users"
-	"github.com/maelvls/slackcli/internal/slackapi"
 )
 
 // inviteResult is printed by `channel invite`.
@@ -60,9 +60,15 @@ already_invited_emails, failed.
 The exit status is non-zero when any target is in unresolved_users or
 failed, or when the invite was aborted (channel not found, missing
 permission …): the JSON is printed first and still lists the invites that
-did go through.`,
+did go through.
+
+This is a write action that reaches other people (and, with --external,
+people outside the workspace): it is refused in safe mode.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := rt.CheckSafeMode("channel invite"); err != nil {
+				return err
+			}
 			if allowExternalInvite && !external {
 				return errors.New("--allow-external-user-invites requires --external")
 			}
@@ -70,50 +76,34 @@ did go through.`,
 			if len(targets) == 0 {
 				return errors.New(`no users provided: pass --users "U01234567,@alice,bob@example.com"`)
 			}
-			var emails []string
+			inv := &invitation{rt: rt, external: external, limited: !allowExternalInvite, targets: targets}
 			if external {
-				var others []string
-				emails, others = channeladmin.SplitEmails(targets)
+				// All or nothing: no invitation leaves the workspace while
+				// part of the command line is not understood.
+				emails, others := channeladmin.SplitEmails(targets)
 				if len(others) > 0 {
-					return fmt.Errorf(`--external only accepts email addresses in --users (e.g. --users "alice@example.com,bob@example.com"); not an email address: %s. Nothing was sent`, strings.Join(others, ", "))
+					return fmt.Errorf(`--external only accepts email addresses in --users (e.g. --users "alice@example.com,bob@example.com"); not an email address: %s. Nothing was sent: drop or fix those targets (invite workspace members without --external)`, strings.Join(others, ", "))
 				}
+				inv.targets = emails
 			}
-			ws := rt.EffectiveWorkspace(workspace)
-			if err := rt.AssertWorkspaceForChannelNames(ws, channel); err != nil {
-				return err
+			target, err := cmdutil.ParseChannel(rt, channel, workspace)
+			if err != nil {
+				return fmt.Errorf("--channel: %w", err)
 			}
 
+			// The progress is kept in inv, outside the work that is run
+			// again once expired credentials have been re-imported: the
+			// second run only invites those not yet dealt with.
 			ctx := cmd.Context()
-			// The payload is returned even with an error: it then lists
-			// the invites that went through before the failure.
-			payload, err := clictx.WithAutoRefresh(ctx, rt, func() (any, error) {
-				r, err := rt.Client(ctx, ws)
-				if err != nil {
-					return nil, err
-				}
-				channelID, err := channels.ResolveID(ctx, r.Client, channel)
-				if err != nil {
-					return nil, err
-				}
-				if external {
-					limited := !allowExternalInvite
-					res, err := channeladmin.InviteExternal(ctx, r.Client, channelID, emails, limited)
-					payload := externalInviteResult{
-						ChannelID:            channelID,
-						External:             true,
-						ExternalLimited:      limited,
-						InvitedEmails:        res.InvitedEmails,
-						AlreadyInvitedEmails: res.AlreadyInvitedEmails,
-						Failed:               res.Failed,
-					}
-					if err != nil {
-						return payload, err
-					}
-					return payload, res.Err()
-				}
-				return inviteMembers(ctx, rt, r.Client, channelID, targets)
+			_, err = cmdutil.WithTarget(ctx, rt, target, func(loc cmdutil.Located) (struct{}, error) {
+				return struct{}{}, inv.run(ctx, loc)
 			})
-			if payload != nil {
+			if err == nil {
+				err = inv.err()
+			}
+			// The payload is printed even with an error: it then lists
+			// the invites that went through before the failure.
+			if payload := inv.payload(); payload != nil {
 				if printErr := rt.Print(payload); printErr != nil {
 					return errors.Join(err, printErr)
 				}
@@ -131,35 +121,111 @@ did go through.`,
 	return cmd
 }
 
-// inviteMembers resolves targets to user IDs and invites them. It returns
-// a nil payload only when nothing was attempted.
-func inviteMembers(ctx context.Context, rt *clictx.Context, client *slackapi.Client, channelID string, targets []string) (any, error) {
-	payload := inviteResult{ChannelID: channelID}
-	var userIDs []string
-	// One batch: the handles that need the user directory share one scan.
-	resolved, err := users.ResolveUserIDs(ctx, client, targets)
-	if err != nil {
-		// Nobody has been invited yet: a clean failure.
-		return nil, err
-	}
-	for _, r := range resolved {
-		if r.Err != nil {
-			payload.UnresolvedUsers = append(payload.UnresolvedUsers, r.Input)
-			rt.Hintf("%v", r.Err)
-			continue
+// invitation is one `channel invite` and how far it got. run may be
+// called several times (clictx.WithAutoRefresh): each call carries on
+// where the previous one stopped, so that no invite is sent twice and the
+// outcome of every target is reported once.
+type invitation struct {
+	rt       *clictx.Context
+	external bool
+	// limited is the external_limited flag of external invitations.
+	limited bool
+	// targets are the --users entries (email addresses with --external).
+	targets []string
+
+	channelID string
+	// resolved says that pending holds the user IDs targets resolve to;
+	// with --external pending are email addresses from the start.
+	resolved bool
+	// pending are the user IDs or email addresses still to be invited.
+	pending []string
+
+	invited, already, unresolved []string
+	failed                       []channeladmin.Failure
+}
+
+// run invites the targets not yet dealt with. It returns an error only
+// when the invite is aborted (see channeladmin.InviteUsers).
+func (inv *invitation) run(ctx context.Context, loc cmdutil.Located) error {
+	inv.channelID = loc.ChannelID
+	if !inv.resolved {
+		if inv.external {
+			inv.pending = inv.targets
+		} else {
+			// One batch: the handles that need the user directory share
+			// one scan.
+			resolved, err := users.ResolveUserIDs(ctx, loc.Client, inv.targets)
+			if err != nil {
+				// Nobody has been invited yet: a clean failure.
+				return err
+			}
+			for _, r := range resolved {
+				if r.Err != nil {
+					inv.unresolved = append(inv.unresolved, r.Input)
+					inv.rt.Hintf("%v", r.Err)
+					continue
+				}
+				inv.pending = append(inv.pending, r.ID)
+			}
 		}
-		userIDs = append(userIDs, r.ID)
+		inv.resolved = true
 	}
 
-	res, err := channeladmin.InviteUsers(ctx, client, channelID, userIDs)
-	payload.InvitedUserIDs = res.InvitedUserIDs
-	payload.AlreadyInChannelUserIDs = res.AlreadyInChannelUserIDs
-	payload.Failed = res.Failed
-	if err != nil {
-		return payload, err
+	var (
+		invited, already []string
+		failed           []channeladmin.Failure
+		err              error
+	)
+	if inv.external {
+		var res channeladmin.ExternalInviteResult
+		res, err = channeladmin.InviteExternal(ctx, loc.Client, loc.ChannelID, inv.pending, inv.limited)
+		invited, already, failed = res.InvitedEmails, res.AlreadyInvitedEmails, res.Failed
+	} else {
+		var res channeladmin.InviteResult
+		res, err = channeladmin.InviteUsers(ctx, loc.Client, loc.ChannelID, inv.pending)
+		invited, already, failed = res.InvitedUserIDs, res.AlreadyInChannelUserIDs, res.Failed
 	}
-	if len(payload.UnresolvedUsers) > 0 {
-		err = fmt.Errorf("could not resolve %d of the users: %s", len(payload.UnresolvedUsers), strings.Join(payload.UnresolvedUsers, ", "))
+	inv.invited = append(inv.invited, invited...)
+	inv.already = append(inv.already, already...)
+	inv.failed = append(inv.failed, failed...)
+	inv.pending = slices.DeleteFunc(slices.Clone(inv.pending), func(target string) bool {
+		return slices.Contains(invited, target) || slices.Contains(already, target) ||
+			slices.ContainsFunc(failed, func(f channeladmin.Failure) bool { return f.Target == target })
+	})
+	return err
+}
+
+// err is the error of an invite that ran to its end: nil unless a target
+// was refused by Slack or could not be resolved.
+func (inv *invitation) err() error {
+	var unresolved error
+	if len(inv.unresolved) > 0 {
+		unresolved = fmt.Errorf("could not resolve %d of the users: %s", len(inv.unresolved), strings.Join(inv.unresolved, ", "))
 	}
-	return payload, errors.Join(res.Err(), err)
+	return errors.Join(channeladmin.InviteResult{Failed: inv.failed}.Err(), unresolved)
+}
+
+// payload is what to print; nil when nothing was attempted (the channel
+// or the users could not even be looked up).
+func (inv *invitation) payload() any {
+	if !inv.resolved {
+		return nil
+	}
+	if inv.external {
+		return externalInviteResult{
+			ChannelID:            inv.channelID,
+			External:             true,
+			ExternalLimited:      inv.limited,
+			InvitedEmails:        inv.invited,
+			AlreadyInvitedEmails: inv.already,
+			Failed:               inv.failed,
+		}
+	}
+	return inviteResult{
+		ChannelID:               inv.channelID,
+		InvitedUserIDs:          inv.invited,
+		AlreadyInChannelUserIDs: inv.already,
+		UnresolvedUsers:         inv.unresolved,
+		Failed:                  inv.failed,
+	}
 }

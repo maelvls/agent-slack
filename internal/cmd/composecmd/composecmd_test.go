@@ -346,8 +346,8 @@ func TestComposeTargets(t *testing.T) {
 			map[string]any{"channel": "C12345678", "text": "hi", "thread_ts": "1770160500.000100"}},
 		{"message URL replies in its thread", []string{url, "hi"},
 			map[string]any{"channel": "C12345678", "text": "hi", "thread_ts": "1770160500.000100"}},
-		{"--thread-ts overrides the URL-derived thread", []string{url, "hi", "--thread-ts", "1770160000.000001"},
-			map[string]any{"channel": "C12345678", "text": "hi", "thread_ts": "1770160000.000001"}},
+		{"--thread-ts may repeat the thread of the URL", []string{url, "hi", "--thread-ts", "1770160500.000100"},
+			map[string]any{"channel": "C12345678", "text": "hi", "thread_ts": "1770160500.000100"}},
 		{"user id is a DM", []string{"U12345678", "hi"},
 			map[string]any{"channel": "D99999999", "text": "hi"}},
 		{"--no-unfurl", []string{"#general", "https://example.com", "--no-unfurl"},
@@ -522,7 +522,72 @@ func TestComposeRejectsBadInputBeforeAnything(t *testing.T) {
 	}
 }
 
+// --thread-ts may not send the reply to another thread than the one the
+// message URL designates ("message send" applies the same rule), whether
+// compose is run directly or by a safe-mode "message send".
+func TestThreadTSContradictingTheURLIsRefused(t *testing.T) {
+	const url = workspaceURL + "/archives/C12345678/p1770160500000100"
+	for _, safeMode := range []bool{false, true} {
+		h := newHarness(t)
+		h.rt.SafeModeFlag = safeMode
+		_, err := Compose(context.Background(), h.rt, url, "hi", Options{ThreadTS: "1770160000.000001"})
+		if err == nil || !strings.Contains(err.Error(), "--thread-ts 1770160000.000001 contradicts the message URL, whose thread is 1770160500.000100") {
+			t.Errorf("safe mode %v: err = %v", safeMode, err)
+		}
+		h.wantNothingPosted()
+		if len(h.opened) != 0 {
+			t.Errorf("safe mode %v: the browser was opened", safeMode)
+		}
+	}
+}
+
 // --- no browser -------------------------------------------------------------
+
+// Under safe mode the editor link is never printed, not even at a
+// terminal: an agent may be running the command under a pseudo-terminal,
+// and whoever holds the link can send.
+func TestNoBrowserInSafeModeFailsClosedEvenAtATerminal(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		run  func(h *harness) error
+	}{
+		{"message compose", func(h *harness) error { _, err := h.run("#general", "hello"); return err }},
+		{"message send redirected", func(h *harness) error {
+			_, err := h.c.compose(context.Background(), "#general", "hello", Options{})
+			return err
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			h.rt.SafeModeFlag = true
+			h.openErr = errors.New("no graphical session")
+			h.c.humanAtStderr = func() bool { return true }
+
+			err := tc.run(h)
+			if err == nil {
+				t.Fatal("compose went on without a browser")
+			}
+			for _, want := range []string{"safe mode is active", "no graphical session", "nothing was sent", "message compose <target> [text]", "graphical session"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error %q does not contain %q", err, want)
+				}
+			}
+			h.wantNoSecretsPrinted()
+			if strings.Contains(err.Error(), "?k=") || strings.Contains(err.Error(), "127.0.0.1") {
+				t.Errorf("the error carries the editor address: %v", err)
+			}
+			if strings.Contains(h.stderr.String(), "127.0.0.1") {
+				t.Errorf("stderr carries the editor address: %s", h.stderr)
+			}
+			h.wantNothingPosted()
+			u, _ := url.Parse(h.opened[0])
+			if conn, err := net.DialTimeout("tcp", u.Host, time.Second); err == nil {
+				conn.Close()
+				t.Error("the editor still listens")
+			}
+		})
+	}
+}
 
 func TestNoBrowserAndNoTerminalFailsClosed(t *testing.T) {
 	h := newHarness(t)
@@ -611,6 +676,16 @@ func TestIsTerminal(t *testing.T) {
 	defer f.Close()
 	if isTerminal(f) {
 		t.Error("a regular file is not a terminal")
+	}
+	// A character device, but nobody reads it: with 2>/dev/null and no
+	// browser, compose must fail rather than wait for a link to be opened.
+	null, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer null.Close()
+	if isTerminal(null) {
+		t.Errorf("%s is not a terminal", os.DevNull)
 	}
 }
 
@@ -740,16 +815,21 @@ func TestCommandContract(t *testing.T) {
 	if !clictx.HasNoTimeout(cmd) {
 		t.Error("compose waits on a human: it must be exempt from the command timeout")
 	}
-	if !strings.Contains(cmd.Short, "CI skips the editor") {
-		t.Errorf("Short = %q", cmd.Short)
+	if strings.Contains(cmd.Short, "CI") || len(cmd.Short) > 90 {
+		t.Errorf("Short = %q, want a one-liner (the CI caveat belongs in Long)", cmd.Short)
 	}
-	for _, want := range []string{"sent immediately", "safe mode", "user id", "{ok, cancelled, reason}"} {
+	for _, line := range strings.Split(cmd.Long, "\n") {
+		if len([]rune(line)) > 80 {
+			t.Errorf("Long is not wrapped: %q", line)
+		}
+	}
+	for _, want := range []string{"sent immediately", "safe mode", "user ID", "{ok, cancelled, reason}", "CI environment variable", "never printed"} {
 		if !strings.Contains(cmd.Long, want) {
 			t.Errorf("Long does not mention %q", want)
 		}
 	}
 	for flag, want := range map[string]string{
-		"thread-ts": "overrides the URL-derived thread",
+		"thread-ts": "must not contradict",
 		"no-unfurl": "link and media previews",
 		"workspace": "Workspace selector",
 	} {

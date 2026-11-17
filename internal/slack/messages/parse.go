@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/maelvls/slackcli/internal/jsonx"
+	"github.com/maelvls/slackcli/internal/slack/enrich"
 	"github.com/maelvls/slackcli/internal/slack/slacktext"
 	"github.com/maelvls/slackcli/internal/slackapi"
 )
@@ -115,6 +116,11 @@ func needsInfo(f FileSummary) bool { return f.Mode == "snippet" || f.URLPrivateD
 // enrichFiles completes the files of msgs with files.info. Each file is
 // looked up once however many messages share it; a failed lookup leaves
 // the summary as it was.
+//
+// It is an enrichment (see package enrich): the error is only for a
+// cancelled context or dead credentials. When files.info is rate limited
+// no further file is asked for, the messages are returned with the file
+// summaries they came with, and the collector of ctx is told.
 func enrichFiles(ctx context.Context, client *slackapi.Client, msgs []Message) error {
 	var ids []string
 	infos := map[string]map[string]any{}
@@ -135,25 +141,39 @@ func enrichFiles(ctx context.Context, client *slackapi.Client, msgs []Message) e
 		wg    sync.WaitGroup
 		fatal error
 		sem   = make(chan struct{}, filesInfoConcurrency)
+		// limited stops the lookups once Slack has refused one.
+		limited enrich.Gate
 	)
 	for _, id := range ids {
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			mu.Lock()
+			abort := fatal != nil
+			mu.Unlock()
+			if abort || limited.Closed() {
+				return
+			}
 			resp, err := client.API(ctx, "files.info", map[string]any{"file": id})
 			mu.Lock()
 			defer mu.Unlock()
 			switch {
 			case err == nil:
 				infos[id] = jsonx.Map(resp["file"])
-			case isFatal(ctx, err):
+			case enrich.MustAbort(ctx, err):
 				fatal = cmp.Or(fatal, err)
+			default:
+				limited.Failed(err)
 			}
 		})
 	}
 	wg.Wait()
 	if fatal != nil {
 		return fatal
+	}
+	if skipped, rateLimit := limited.Skipped(); skipped > 0 {
+		enrich.Warnf(ctx, "the details of %d of %d attached files could not be fetched (%v): snippets are shown without their content and some files without a download URL; %s",
+			skipped, len(ids), rateLimit, enrich.Hint())
 	}
 
 	for i := range msgs {
@@ -186,10 +206,11 @@ func mergeFileInfo(f FileSummary, info map[string]any) FileSummary {
 	return f
 }
 
-// isFatal reports whether err must abort the whole fetch rather than be
-// treated as "this lookup found nothing": the command was cancelled, the
-// credentials are dead (the caller refreshes them and retries), or Slack
-// is rate limiting us.
+// isFatal reports whether err, from one of the calls that look for the
+// message asked for, must abort the fetch rather than be treated as "this
+// lookup found nothing": the command was cancelled, the credentials are
+// dead (the caller refreshes them and retries), or Slack is rate limiting
+// us (the message may well exist: saying "not found" would be wrong).
 func isFatal(ctx context.Context, err error) bool {
 	var rl *slackapi.RateLimitError
 	return err != nil && (ctx.Err() != nil || slackapi.IsAuthError(err) || errors.As(err, &rl))

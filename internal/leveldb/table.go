@@ -17,6 +17,10 @@ const (
 	// maxBlockSize bounds a decompressed block (blocks are ~4 KiB; a
 	// single large value makes a block as large as that value).
 	maxBlockSize = 256 << 20
+	// maxSnappyRatio bounds how much larger than its compressed form a
+	// snappy block can be: the densest element of the format is a 3-byte
+	// copy of 64 bytes (a ratio of 21.3).
+	maxSnappyRatio = 22
 
 	compressionNone   = 0
 	compressionSnappy = 1
@@ -56,8 +60,12 @@ func readBlock(data []byte, h blockHandle) ([]byte, error) {
 	case compressionNone:
 		return contents, nil
 	case compressionSnappy:
+		// The decoded length is whatever the first bytes of the block
+		// claim, and snappy allocates it before decoding anything: check
+		// that the block could really decompress to that much, or a few
+		// corrupted bytes cost 256 MiB each time they are read.
 		n, err := snappy.DecodedLen(contents)
-		if err != nil || n > maxBlockSize {
+		if err != nil || n > maxBlockSize || uint64(n) > maxSnappyRatio*uint64(len(contents)) {
 			return nil, errCorrupt
 		}
 		return snappy.Decode(nil, contents)

@@ -2,9 +2,11 @@ package search
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/maelvls/slackcli/internal/slack/users"
 	"github.com/maelvls/slackcli/internal/slackapi"
@@ -545,5 +547,63 @@ func TestSearchValidatesOptions(t *testing.T) {
 	}
 	if len(f.calls) != 0 {
 		t.Errorf("calls = %v, want none before validation", f.calls)
+	}
+}
+
+// --resolve-users is an enrichment: a rate limited users.info must not
+// lose the search results.
+func TestSearchKeepsResultsWhenResolvingUsersIsRateLimited(t *testing.T) {
+	f := newFake(t)
+	var msgs []map[string]any
+	for i := range 20 {
+		m := message(jan1+i, "hello")
+		m["user"] = fmt.Sprintf("U%08d", i)
+		msgs = append(msgs, m)
+	}
+	f.history(msgs...)
+	f.on("users.info", func(map[string]any) (map[string]any, error) {
+		return nil, &slackapi.RateLimitError{Method: "users.info", RetryAfter: time.Minute}
+	})
+
+	opts := options(t, KindMessages, "hello")
+	opts.Channels, opts.ResolveUsers = []string{general}, true
+	res, err := Search(t.Context(), f.client(), opts)
+	if err != nil {
+		t.Fatalf("err = %v, want the results without the user profiles", err)
+	}
+	if len(res.Messages) != 20 || len(res.ReferencedUsers) != 0 {
+		t.Errorf("%d messages, referenced_users = %v", len(res.Messages), res.ReferencedUsers)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "20 of the 20 users") || !strings.Contains(res.Warnings[0], "rate limited") {
+		t.Errorf("warnings = %q", res.Warnings)
+	}
+	if n := len(f.callsTo("users.info")); n > 5 {
+		t.Errorf("%d users.info calls after being rate limited", n)
+	}
+}
+
+// Fetching the matched messages in full is an enrichment too: once it is
+// rate limited the remaining matches are rendered from the search index,
+// without one refused call each.
+func TestSearchStopsFetchingMatchesOnceRateLimited(t *testing.T) {
+	f := newFake(t)
+	var matches []any
+	for i := range 20 {
+		matches = append(matches, match(general, jan1+i, "from the index"))
+	}
+	f.searchPages("search.messages", 20, matches)
+	f.on("conversations.history", func(map[string]any) (map[string]any, error) {
+		return nil, &slackapi.RateLimitError{Method: "conversations.history", RetryAfter: time.Minute}
+	})
+
+	res := mustSearch(t, f, options(t, KindMessages, "hello"))
+	if len(res.Messages) != 20 || !strings.Contains(res.Messages[0].Content, "index") {
+		t.Fatalf("messages = %d, want the 20 matches rendered", len(res.Messages))
+	}
+	if n := len(f.callsTo("conversations.history")); n > fetchConcurrency {
+		t.Errorf("%d conversations.history calls after being rate limited, want at most %d", n, fetchConcurrency)
+	}
+	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "20 message(s) could not be fetched in full") {
+		t.Errorf("warnings = %q", res.Warnings)
 	}
 }

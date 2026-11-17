@@ -1,7 +1,6 @@
 package slacktext
 
 import (
-	"regexp"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -37,30 +36,121 @@ func richTextBlock(elements []any) []any {
 
 const codeFence = "```"
 
-// fenceInfoRE matches what may follow an opening fence without being code:
-// nothing, or a Markdown language tag, which Slack has no use for.
-var fenceInfoRE = regexp.MustCompile(`^[A-Za-z0-9_+#.-]*\s*$`)
+// fenceLanguages are the Markdown info strings dropped from an opening
+// fence: Slack has no use for them. The list is deliberately short of words
+// that are also commands ("make", "git", "go run"): a first line that is
+// not surely a language tag is code, and is kept.
+var fenceLanguages = map[string]bool{
+	"bash": true, "console": true, "cpp": true, "csharp": true, "css": true,
+	"diff": true, "dockerfile": true, "go": true, "golang": true,
+	"graphql": true, "hcl": true, "html": true, "ini": true, "java": true,
+	"javascript": true, "js": true, "json": true, "jsx": true, "kotlin": true,
+	"lua": true, "makefile": true, "markdown": true, "md": true, "php": true,
+	"plaintext": true, "powershell": true, "proto": true, "py": true,
+	"python": true, "rb": true, "rs": true, "ruby": true, "rust": true,
+	"scala": true, "sh": true, "shell": true, "sql": true, "swift": true,
+	"terraform": true, "text": true, "toml": true, "ts": true, "tsx": true,
+	"txt": true, "typescript": true, "xml": true, "yaml": true, "yml": true,
+	"zsh": true,
+}
+
+// richChunk is a piece of the text of a message: a code block, or the text
+// between two code blocks.
+type richChunk struct {
+	text string
+	code bool
+}
+
+// splitFences carves the ``` code blocks out of text, wherever their fences
+// are: at the start of a line, indented, or in the middle of one. It is done
+// before any line is looked at, so that nothing in a code block is read as
+// a list item or a quote, and no fence is mistaken for text. An unclosed
+// block whose fence starts a line runs to the end of the text, as it does in
+// Slack's composer; a lone ``` in the middle of a line is text.
+func splitFences(text string) []richChunk {
+	var chunks []richChunk
+	for text != "" {
+		before, rest, found := strings.Cut(text, codeFence)
+		ownLine := lastLineIsBlank(before)
+		if found && !ownLine && !strings.Contains(rest, codeFence) {
+			before, found = text, false
+		}
+		if ownLine {
+			// The indentation of the fence, and the line break before it.
+			before = strings.TrimRight(before, " \t")
+			before = strings.TrimSuffix(before, "\n")
+		}
+		if before != "" {
+			chunks = append(chunks, richChunk{text: before})
+		}
+		if !found {
+			break
+		}
+		code, after, closed := strings.Cut(rest, codeFence)
+		if code = fencedCode(code, ownLine, closed); strings.TrimSpace(code) != "" {
+			chunks = append(chunks, richChunk{text: code, code: true})
+		}
+		// What follows the closing fence on its line is ordinary text.
+		text = strings.TrimPrefix(strings.TrimLeft(after, " \t"), "\n")
+	}
+	return chunks
+}
+
+// lastLineIsBlank reports whether nothing but spaces follows the last line
+// break of s (or its start).
+func lastLineIsBlank(s string) bool {
+	return strings.TrimRight(s[strings.LastIndexByte(s, '\n')+1:], " \t") == ""
+}
+
+// fencedCode returns the code of a block given what is between its fences.
+// The line breaks next to the fences are not part of the code.
+//
+// The first line is dropped as a Markdown language tag only when all of
+// this holds: the opening fence starts its line, what follows it on that
+// line is exactly one of [fenceLanguages], and the closing fence, if any,
+// is on a line of its own. So "```go\nx := 1\n```" loses "go", while
+// "```make\nmake install```" and "```ls -l\n```" keep every word.
+func fencedCode(raw string, fenceStartsLine, closed bool) string {
+	closingOwnLine := !closed || strings.Contains(raw, "\n") && lastLineIsBlank(raw)
+	if first, rest, multiline := strings.Cut(raw, "\n"); multiline && fenceStartsLine && closingOwnLine &&
+		fenceLanguages[strings.ToLower(strings.TrimRight(first, " \t"))] {
+		raw = "\n" + rest
+	}
+	if strings.TrimSpace(strings.SplitN(raw, "\n", 2)[0]) == "" {
+		// Nothing on the line of the opening fence.
+		_, raw, _ = strings.Cut(raw, "\n")
+	}
+	if lastLineIsBlank(raw) {
+		// The indentation of the closing fence and the line break before it.
+		raw = strings.TrimSuffix(strings.TrimRight(raw, " \t"), "\n")
+	}
+	return raw
+}
 
 func richTextElements(text string) (elements []any, hasLists, hasFormatting bool) {
-	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
-	idx := 0
-	for idx < len(lines) {
-		line := lines[idx]
-
-		if strings.HasPrefix(line, codeFence) {
-			var code string
-			code, idx = collectCodeBlock(lines, idx)
-			if strings.TrimSpace(code) != "" {
-				elements = append(elements, map[string]any{
-					"type":     "rich_text_preformatted",
-					"elements": []any{map[string]any{"type": "text", "text": code}},
-				})
-				hasFormatting = true
-			}
+	for _, chunk := range splitFences(strings.ReplaceAll(text, "\r\n", "\n")) {
+		if chunk.code {
+			elements = append(elements, map[string]any{
+				"type":     "rich_text_preformatted",
+				"elements": []any{map[string]any{"type": "text", "text": chunk.text}},
+			})
+			hasFormatting = true
 			continue
 		}
+		proseElements, lists, formatting := proseElements(strings.Split(chunk.text, "\n"))
+		elements = append(elements, proseElements...)
+		hasLists = hasLists || lists
+		hasFormatting = hasFormatting || formatting
+	}
+	return elements, hasLists, hasFormatting
+}
 
-		if _, ok := quoteLine(line); ok {
+// proseElements converts lines that hold no code block: quotes, lists and
+// paragraphs.
+func proseElements(lines []string) (elements []any, hasLists, hasFormatting bool) {
+	idx := 0
+	for idx < len(lines) {
+		if _, ok := quoteLine(lines[idx]); ok {
 			var quoted []string
 			for idx < len(lines) {
 				content, ok := quoteLine(lines[idx])
@@ -80,7 +170,7 @@ func richTextElements(text string) (elements []any, hasLists, hasFormatting bool
 			continue
 		}
 
-		if _, ok := parseListLine(line); ok {
+		if _, ok := listLineAt(lines, idx); ok {
 			var lists []any
 			lists, idx = collectLists(lines, idx)
 			elements = append(elements, lists...)
@@ -90,7 +180,7 @@ func richTextElements(text string) (elements []any, hasLists, hasFormatting bool
 
 		// Plain text: everything up to the next special line.
 		start := idx
-		for idx < len(lines) && !isSpecialLine(lines[idx]) {
+		for idx < len(lines) && !isSpecialLine(lines, idx) {
 			idx++
 		}
 		content := strings.Join(lines[start:idx], "\n")
@@ -111,14 +201,11 @@ func richTextElements(text string) (elements []any, hasLists, hasFormatting bool
 	return elements, hasLists, hasFormatting
 }
 
-func isSpecialLine(line string) bool {
-	if strings.HasPrefix(line, codeFence) {
+func isSpecialLine(lines []string, idx int) bool {
+	if _, ok := quoteLine(lines[idx]); ok {
 		return true
 	}
-	if _, ok := quoteLine(line); ok {
-		return true
-	}
-	_, ok := parseListLine(line)
+	_, ok := listLineAt(lines, idx)
 	return ok
 }
 
@@ -128,48 +215,6 @@ func quoteLine(line string) (content string, ok bool) {
 		return "", true
 	}
 	return strings.CutPrefix(line, "> ")
-}
-
-// collectCodeBlock reads the code block whose opening fence starts
-// lines[idx]. It returns the code and the index of the next line to read.
-// Text that follows the closing fence on its line is left in lines to be
-// read as an ordinary line. An unclosed block runs to the end of the text.
-func collectCodeBlock(lines []string, idx int) (string, int) {
-	var code []string
-	first := strings.TrimPrefix(lines[idx], codeFence)
-	if before, after, closed := strings.Cut(first, codeFence); closed {
-		// ```code``` on a single line.
-		return before, leaveRemainder(lines, idx, after)
-	}
-	if !fenceInfoRE.MatchString(first) {
-		// Slack-style "```code" with the code starting on the fence line.
-		code = append(code, first)
-	}
-	idx++
-	for idx < len(lines) {
-		before, after, closed := strings.Cut(lines[idx], codeFence)
-		if !closed {
-			code = append(code, lines[idx])
-			idx++
-			continue
-		}
-		if before != "" {
-			code = append(code, before)
-		}
-		idx = leaveRemainder(lines, idx, after)
-		break
-	}
-	return strings.Join(code, "\n"), idx
-}
-
-// leaveRemainder replaces lines[idx] with what follows a closing fence, so
-// that it is parsed next, or skips the line when nothing follows.
-func leaveRemainder(lines []string, idx int, remainder string) int {
-	if strings.TrimSpace(remainder) == "" {
-		return idx + 1
-	}
-	lines[idx] = strings.TrimLeft(remainder, " \t")
-	return idx
 }
 
 type listLine struct {
@@ -222,6 +267,32 @@ func parseListLine(line string) (listLine, bool) {
 	return item, true
 }
 
+// maxLoneNumber is the highest number a numbered line may carry and be a
+// list item without a neighbour to confirm it.
+const maxLoneNumber = 99
+
+// listLineAt parses lines[idx] as a list item, as [parseListLine] does, but
+// refuses a numbered line that is more likely a sentence starting with a
+// number, such as "2024. Great year": a marker above 99 only makes an item
+// when the line before or after it is a numbered item too ("100. x" next to
+// "101. y", or to any other numbered line). "1. only item", "3. c" and
+// every "N." up to 99 are items on their own, as before.
+func listLineAt(lines []string, idx int) (listLine, bool) {
+	item, ok := parseListLine(lines[idx])
+	if !ok || !item.ordered || item.number <= maxLoneNumber {
+		return item, ok
+	}
+	for _, neighbour := range []int{idx - 1, idx + 1} {
+		if neighbour < 0 || neighbour >= len(lines) {
+			continue
+		}
+		if other, ok := parseListLine(lines[neighbour]); ok && other.ordered {
+			return item, true
+		}
+	}
+	return listLine{}, false
+}
+
 // maxListIndent is the deepest nesting Slack renders.
 const maxListIndent = 8
 
@@ -257,7 +328,7 @@ func collectLists(lines []string, idx int) ([]any, int) {
 	// widths holds the indentation of each open nesting level.
 	var widths []int
 	for ; idx < len(lines); idx++ {
-		item, ok := parseListLine(lines[idx])
+		item, ok := listLineAt(lines, idx)
 		if !ok {
 			break
 		}
